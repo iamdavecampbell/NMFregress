@@ -69,29 +69,29 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
     }else{# use a Beta regression model
       ###IN BOOT_REG AND BOOT_REG_STRATIFIED USE THE INPUT constraint = FALSE
       # index = 4
+      print("make sure your covariates include an intercept if you want one...")
       formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
-      
-      data = data.frame(y = theta_nonzero[,index],covariates)
-      # beta = betareg::betareg.fit(theta_nonzero[,index], 
-      #                             covariates,
-      #                             covariates,
-      #                         link = "logit", 
-      #                         link.phi = "log",  # link.phi is for the dispersion,
-      #                         type = "BC") |> #type is for ML, BiasCorrected, BiasReduced
-      #   coefficients()
-      # 
-      # 
-      beta = 
+      beta = NULL
+      for(thetaindex in 1:ncol(theta_nonzero)){
+        beta[thetaindex,] = 
+          betareg::betareg(formula, # after "|" covariates included are for the dispersion.
+                           data =  data.frame(y = theta_nonzero[,4],covariates),
+                           link = "logit", 
+                           link.phi = "log",  # link.phi is for the dispersion,
+                           type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()
         
-        betareg::betareg(formula, # after "|" covariates included are for the dispersion.
-                              data = data,
-                              link = "logit", 
-                              link.phi = "log",  # link.phi is for the dispersion,
-                              type = "BC") 
-      
-      
-      |> #type is for ML, BiasCorrected, BiasReduced
-        coefficients()
+        # can I get this to work without embedding in a for loop?  MAybe using the below
+        # betareg::betareg.fit(matrix(theta_nonzero[,index],ncol=1),
+        #                             covariates,
+        #                             covariates,
+        #                         link = "logit",
+        #                         link.phi = "log",  # link.phi is for the dispersion,
+        #                         type = "BC", 
+        #                      control = betareg.control(fsmaxit = 10000)) |> #type is for ML, BiasCorrected, BiasReduced
+        #   coefficients()
+        # # 
+        # # 
+      }
       ### OBSERVED MUST BE IN (0,1), not [0,1] <-- set them to 10^-6 or maybe max(10^-10, {1st quartile ÷ # actual zero values}
     }
   }else{
