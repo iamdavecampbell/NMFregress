@@ -41,6 +41,8 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
   ##### set up matrices for OLS/return value
   theta = t(output$theta)
   covariates = output$covariates
+  # handle spaces and odd characters in column names
+  colnames(covariates) =  make.names(colnames(covariates))
   
   ##### simple function to normalize rows of theta
   normalize = function(x){
@@ -51,25 +53,44 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
   ##### fit a linear model on all topics using specified covariates
   theta = apply(theta, FUN = normalize, MARGIN = 2)
   if(is.null(obs_weights)){
-    zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-    theta = rbind(theta, zero_block)
+    # the zero block thing will be deprecated when we get rid of the constraint.
+    # zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
+    # theta = rbind(theta, zero_block)
     if(min(theta)==0){
-      warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas, setting smallest values to 1e-16")
-      theta_nonzero = theta
-      theta_nonzero[theta_nonzero<10^-16] = 10^-16
+      warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-16")
+      theta_nonzero = theta + 10^-10
     }else{
       theta_nonzero = theta
     }
     if(OLS == TRUE){
+      warning("The OLS option will be deprecated")
       beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
       
     }else{# use a Beta regression model
       ###IN BOOT_REG AND BOOT_REG_STRATIFIED USE THE INPUT constraint = FALSE
       # index = 4
-      beta = betareg::betareg(theta_nonzero[,index]~covariates|covariates, # after "|" covariates included are for the dispersion.
+      formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
+      
+      data = data.frame(y = theta_nonzero[,index],covariates)
+      # beta = betareg::betareg.fit(theta_nonzero[,index], 
+      #                             covariates,
+      #                             covariates,
+      #                         link = "logit", 
+      #                         link.phi = "log",  # link.phi is for the dispersion,
+      #                         type = "BC") |> #type is for ML, BiasCorrected, BiasReduced
+      #   coefficients()
+      # 
+      # 
+      beta = 
+        
+        betareg::betareg(formula, # after "|" covariates included are for the dispersion.
+                              data = data,
                               link = "logit", 
                               link.phi = "log",  # link.phi is for the dispersion,
-                              type = "BC") |> #type is for ML, BiasCorrected, BiasReduced
+                              type = "BC") 
+      
+      
+      |> #type is for ML, BiasCorrected, BiasReduced
         coefficients()
       ### OBSERVED MUST BE IN (0,1), not [0,1] <-- set them to 10^-6 or maybe max(10^-10, {1st quartile ÷ # actual zero values}
     }
@@ -207,8 +228,8 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
-boot_reg_stratified = function(output, samples, constraint = FALSE...){
-  
+boot_reg_stratified = function(output, samples, constraint = FALSE,...){
+  # eventually deprecate the constraint and "..." options since the "..." for now is just to have the OLS option
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -231,15 +252,14 @@ boot_reg_stratified = function(output, samples, constraint = FALSE...){
   to_return = list()
   
   if(constraint){
+    print("the constraint will soon be deprecated.")
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
   }else{
     constraint_block = NULL
   }
   covariate_block = head(covariates, ncol(theta))
   # identify the categories (remove the intercept)
-  categorical_groups = covariate_block[,
-                                       apply(output$covariates,2,sum) != dim(covariate_block)[1]
-  ]
+  categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
   groups = apply(categorical_groups,1,function(x){names(x[x==1])})
   group_levels = unique(groups)
   group_count = table(groups)
@@ -287,23 +307,23 @@ boot_reg_stratified = function(output, samples, constraint = FALSE...){
     boot_output = output
     boot_output$theta = boot_theta
     boot_output$covariates = boot_covariates
-    
-    # note that theta should be normalized and sum to one.
-    # however numerical precision isn't perfect and can lead to problems in the lm.fit
-    # error handling for when numerical precision breaks things:
-    if(all(boot_theta |> colSums()  == 1)){
-      ##### call get_regression_coefs and append list element
+
+    # deprecated commented stuff    
+    # # note that theta should be normalized and sum to one.
+    # # however numerical precision isn't perfect and can lead to problems in the lm.fit
+    # # error handling for when numerical precision breaks things:
+    # if(all(boot_theta |> colSums()  == 1)){
+    #   ##### call get_regression_coefs and append list element
       boot_coefs = get_regression_coefs(boot_output, ...)
-      to_return[[i]] = boot_coefs
-    }else{
-      #potential problem cols where numerical precision was not perfect:
-      nugget = 10* max(abs(1-(colSums(boot_theta) )))
-      col_indices = which(colSums(boot_theta)!=1)
-      boot_output$theta[,col_indices] = boot_theta[,col_indices] + nugget
-      ##### call get_regression_coefs and append list element
-      boot_coefs = get_regression_coefs(boot_output, ...)
-      to_return[[i]] = boot_coefs
-    }
+    #   to_return[[i]] = boot_coefs
+    # }else{
+    #   #potential problem cols where numerical precision was not perfect:
+    #   
+    #   boot_output$theta[,col_indices] = boot_theta
+    #   ##### call get_regression_coefs and append list element
+    #   boot_coefs = get_regression_coefs(boot_output, ...)
+    #   to_return[[i]] = boot_coefs
+    # }
     
     
     
