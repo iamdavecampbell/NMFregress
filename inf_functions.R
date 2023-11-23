@@ -55,9 +55,8 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   ##### fit a linear model on all topics using specified covariates
   
   if(min(theta)==0){
-    warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-16")
-    theta_nonzero = theta + 10^-16
-    theta_nonzero = apply(theta_nonzero, FUN = normalize, MARGIN = 2)
+    warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-12")
+    theta_nonzero = apply(theta_nonzero, FUN = normalize, MARGIN = 2)+1e-12
   }else{
     theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
   }
@@ -163,7 +162,7 @@ boot_reg = function(output, samples, ...){
     
     ##### produce bootstrap sample and form associated theta and covariate
     # this is written so that a sum-to-one constraint is automatically pushed through if it exists
-    # note that sum to one constraints are incompatible with beta regression since it requires an observed zero
+    # note that sum to one constraints are incompatible with beta regression since it requires an observed
       constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
     
     covariate_block = head(covariates, ncol(theta))
@@ -232,6 +231,7 @@ boot_reg = function(output, samples, ...){
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
+#' 
 boot_reg_stratified = function(output, samples, ...){
   # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
   ##### check input types/whether covariates are specified
