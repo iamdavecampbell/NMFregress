@@ -69,12 +69,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
       
     }else{# use a Beta regression model
       
-      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
+      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
       colnames(beta) = c(paste0("mean.", colnames(covariates)),
                          paste0("precision.", colnames(covariates)))
       for(thetaindex in 1:ncol(theta_nonzero)){
         beta[thetaindex,] = 
-          betareg::betareg.fit(y=theta_nonzero[,index],
+          betareg::betareg.fit(y=theta_nonzero[,thetaindex],
                                x=covariates,z=covariates,
                                link = "logit", 
                                link.phi = "log",  # link.phi is for the dispersion,
@@ -293,7 +293,7 @@ boot_reg_stratified = function(output, samples, ...){
     boot_output$theta = boot_theta
     boot_output$covariates = boot_covariates
 
-    boot_coefs = get_regression_coefs(boot_output, ...)
+    boot_coefs = get_regression_coefs(boot_output)
     
     ##### progress of iterations
     if(i %% 10 == 0){
