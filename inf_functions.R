@@ -247,7 +247,6 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
   if(samples <= 0){
     stop("Samples must be a positive integer.")
   }
-  
   parallel = as.integer(parallel)
   if(parallel <= 0){
     stop("parallel must be a positive integer.")
@@ -314,15 +313,13 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
     #parallel setup chunk 1 start
     library(doParallel)
     #create the cluster
-    my.cluster <- parallel::makeCluster(
-      parallel, 
-      type = "PSOCK"
-    )
+    my.cluster <- parallel::makeCluster(parallel)
     doParallel::registerDoParallel(cl = my.cluster)
+    # defaults to fork on linux and psock on windows
     #parallel setup chunk 1 end
     
     #parallel loop start
-    to_return<- foreach(i=1:samples) %dopar% {
+    to_return<- foreach(i=1:samples, .export = ls()) %dopar% {
       
       ##### produce bootstrap sample and form associated theta and covariate
       
