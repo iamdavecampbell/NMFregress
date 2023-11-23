@@ -217,6 +217,8 @@ boot_reg = function(output, samples, ...){
 #'
 #' @param samples The number of bootstrap samples to use.
 #'
+#' @param parallel number of cores to use.  Skip the parallel overhead if using 1 core.
+#'
 #' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
@@ -232,7 +234,7 @@ boot_reg = function(output, samples, ...){
 #'
 #' @export
 #' 
-boot_reg_stratified = function(output, samples, ...){
+boot_reg_stratified = function(output, samples, parallel = 4,...){
   # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -244,6 +246,11 @@ boot_reg_stratified = function(output, samples, ...){
   samples = as.integer(samples)
   if(samples <= 0){
     stop("Samples must be a positive integer.")
+  }
+  
+  parallel = as.integer(parallel)
+  if(parallel <= 0){
+    stop("parallel must be a positive integer.")
   }
   ##### simple function to normalize rows of theta
   normalize = function(x){
@@ -266,7 +273,7 @@ boot_reg_stratified = function(output, samples, ...){
   group_count = table(groups)
   
   
-  
+  if(parallel ==1){
   for(i in 1:samples){
     
     ##### produce bootstrap sample and form associated theta and covariate
@@ -302,119 +309,58 @@ boot_reg_stratified = function(output, samples, ...){
       cat(i, " of ", samples, " bootstrap samples complete.\n")
     }
   }
-  
-  ##### return
-  return(to_return)
-  
-}
-
-
-
-
-#' boot_reg_stratified_parallel
-#'
-#' Bootstrap regression coefficients in order to estimate their sampling distribution.
-#' Stratified bootstrap is used to maintain a constant number of individuals in each group when groups
-#' are categorical
-#'
-#' @param output An object of class nmf_output
-#'
-#' @param samples The number of bootstrap samples to use.
-#'
-#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
-#'
-#' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
-#' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
-#' particular element across bootstrap iterates estimates the sampling distribution
-#' of the associated estimator; see boot_plot() and create_error_bars().
-#'
-#' @examples
-#' neurips_input = create_input(neurips_tdm, neurips_words,
-#'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
-#' neurips_output = solve_nmf(neurips_input)
-#' boot_samples = boot_reg(neurips_output, 1000)
-#'
-#' @export
-#' 
-boot_reg_stratified_parallel = function(output, samples, ...){
-  # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
-  ##### check input types/whether covariates are specified
-  if(class(output) != "nmf_output"){
-    stop("Output must be of class nmf_output.")
-  }
-  if(is.null(output$covariates)){
-    stop("No design matrix specified.")
-  }
-  samples = as.integer(samples)
-  if(samples <= 0){
-    stop("Samples must be a positive integer.")
-  }
-  ##### simple function to normalize rows of theta
-  normalize = function(x){
-    return(x/sum(x))
-  }
-  
-  ##### set up matrices for regression/list for return value
-  theta = output$theta
-  covariates = output$covariates
-  to_return = list()
-  
-  # this is written so that the constraint is automatically pushed through if it exists
-  constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
-  
-  covariate_block = head(covariates, ncol(theta))
-  # identify the categories (remove the intercept)
-  categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
-  groups = apply(categorical_groups,1,function(x){names(x[x==1])})
-  group_levels = unique(groups)
-  group_count = table(groups)
-  
-  #parallel setup chunk 1 start
-  library(doParallel)
-  #create the cluster
-  my.cluster <- parallel::makeCluster(
-    parallel::detectCores() - 2, 
-    type = "PSOCK"
-  )
-  doParallel::registerDoParallel(cl = my.cluster)
-  #parallel setup chunk 1 end
-  
-  
-  #parallel loop start
-  to_return<- foreach(i=1:samples) %dopar% {
+  }else{
     
-    ##### produce bootstrap sample and form associated theta and covariate
+    #parallel setup chunk 1 start
+    library(doParallel)
+    #create the cluster
+    my.cluster <- parallel::makeCluster(
+      parallel, 
+      type = "PSOCK"
+    )
+    doParallel::registerDoParallel(cl = my.cluster)
+    #parallel setup chunk 1 end
     
-    boot_docs = rep(NA, ncol(theta))
-    start = 0
-    sampled_inds = NULL
-    for(group_strat in group_levels){
-      sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
-      sampled_inds = c(sampled_inds,sampled_indices)
-      boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
-      start = start + group_count[[group_strat]]
+    #parallel loop start
+    to_return<- foreach(i=1:samples) %dopar% {
+      
+      ##### produce bootstrap sample and form associated theta and covariate
+      
+      boot_docs = rep(NA, ncol(theta))
+      start = 0
+      sampled_inds = NULL
+      for(group_strat in group_levels){
+        sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
+        sampled_inds = c(sampled_inds,sampled_indices)
+        boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
+        start = start + group_count[[group_strat]]
+      }
+      
+      boot_theta = theta[,boot_docs]
+      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = rbind(boot_covariates, constraint_block)
+      
+      ##### set up a data frame for regression
+      ##### fit a linear model on all topics using specified covariates
+      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      
+      ##### create a new nmf_output object but with bootstrapped theta and covariate
+      boot_output = output
+      boot_output$theta = boot_theta
+      boot_output$covariates = boot_covariates
+      
+      return(get_regression_coefs(boot_output))
     }
     
-    boot_theta = theta[,boot_docs]
-    boot_covariates = covariate_block[boot_docs,]
-    boot_covariates = rbind(boot_covariates, constraint_block)
     
-    ##### set up a data frame for regression
-    ##### fit a linear model on all topics using specified covariates
-    boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
-    
-    ##### create a new nmf_output object but with bootstrapped theta and covariate
-    boot_output = output
-    boot_output$theta = boot_theta
-    boot_output$covariates = boot_covariates
-    
-    return(get_regression_coefs(boot_output))
   }
-  #parallel loop end
   ##### return
   return(to_return)
   
 }
+
+
+
 
 #' boot_plot
 #'
