@@ -70,39 +70,36 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
       ###IN BOOT_REG AND BOOT_REG_STRATIFIED USE THE INPUT constraint = FALSE
       # index = 4
       print("make sure your covariates include an intercept if you want one...")
-      formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
-      beta = NULL
+      # formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
+      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
+      colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                         paste0("precision.", colnames(covariates)))
       for(thetaindex in 1:ncol(theta_nonzero)){
         beta[thetaindex,] = 
-          betareg::betareg(formula, # after "|" covariates included are for the dispersion.
-                           data =  data.frame(y = theta_nonzero[,4],covariates),
-                           link = "logit", 
-                           link.phi = "log",  # link.phi is for the dispersion,
-                           type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()
-        
-        # can I get this to work without embedding in a for loop?  MAybe using the below
-        # betareg::betareg.fit(matrix(theta_nonzero[,index],ncol=1),
-        #                             covariates,
-        #                             covariates,
-        #                         link = "logit",
-        #                         link.phi = "log",  # link.phi is for the dispersion,
-        #                         type = "BC", 
-        #                      control = betareg.control(fsmaxit = 10000)) |> #type is for ML, BiasCorrected, BiasReduced
-        #   coefficients()
-        # # 
-        # # 
+          betareg::betareg.fit(y=theta_nonzero[,index],
+                               x=covariates,z=covariates,
+                               link = "logit", 
+                               link.phi = "log",  # link.phi is for the dispersion,
+                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
       }
-      ### OBSERVED MUST BE IN (0,1), not [0,1] <-- set them to 10^-6 or maybe max(10^-10, {1st quartile ÷ # actual zero values}
     }
   }else{
     zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
     theta = rbind(theta, zero_block)
     obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
-    beta = stats::coef(stats::lm.wfit(x = covariates, y = theta, w = obs_weights))
+    # beta = stats::coef(stats::lm.wfit(x = covariates, y = theta, w = obs_weights))
+    for(thetaindex in 1:ncol(theta_nonzero)){
+      beta[thetaindex,] = 
+        betareg::betareg.fit(y=theta_nonzero[,index],
+                             x=covariates,z=covariates,
+                             link = "logit", weights = obs_weights,
+                             link.phi = "log",  # link.phi is for the dispersion,
+                             type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+      
+    }
   }
   
   ##### return
-  beta = t(beta)
   rownames(beta) = output$anchors
   return(beta)
   
@@ -114,6 +111,8 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
 #' @param output An object of class nmf_output
 #'
 #' @param samples The number of bootstrap samples to use.
+#' 
+#' @param constraint a logical indicating if the regression has a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -216,6 +215,8 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #'
 #' @param samples The number of bootstrap samples to use.
 #'
+#' @param constraint a logical indicating if the regression has a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
+#'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
@@ -228,7 +229,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
-boot_reg_stratified = function(output, samples, constraint = FALSE,...){
+boot_reg_stratified = function(output, samples, constraint = TRUE,...){
   # eventually deprecate the constraint and "..." options since the "..." for now is just to have the OLS option
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
