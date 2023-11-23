@@ -53,25 +53,22 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
-  theta = apply(theta, FUN = normalize, MARGIN = 2)
+  
+  if(min(theta)==0){
+    warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-16")
+    theta_nonzero = theta + 10^-16
+    theta_nonzero = apply(theta_nonzero, FUN = normalize, MARGIN = 2)
+  }else{
+    theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
+  }
   if(is.null(obs_weights)){
-    # the zero block is used if a sum-to-zero constraint is included in the covariate matrix.
-    # zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-    # theta = rbind(theta, zero_block)
-    if(min(theta)==0){
-      warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-16")
-      theta_nonzero = theta + 10^-10
-    }else{
-      theta_nonzero = theta
-    }
+
     if(OLS == TRUE){
       warning("The OLS option may soon be deprecated")
       beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
       
     }else{# use a Beta regression model
-      # index = 4
-      print("make sure your covariates include an intercept if you want one...")
-      # formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
+      
       beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
       colnames(beta) = c(paste0("mean.", colnames(covariates)),
                          paste0("precision.", colnames(covariates)))
@@ -84,19 +81,25 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
                                type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
       }
     }
-  }else{
-    zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-    theta = rbind(theta, zero_block)
-    obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
-    # beta = stats::coef(stats::lm.wfit(x = covariates, y = theta, w = obs_weights))
-    for(thetaindex in 1:ncol(theta_nonzero)){
-      beta[thetaindex,] = 
-        betareg::betareg.fit(y=theta_nonzero[,index],
-                             x=covariates,z=covariates,
-                             link = "logit", weights = obs_weights,
-                             link.phi = "log",  # link.phi is for the dispersion,
-                             type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
-      
+  }else{ # with weights
+    if(OLS == TRUE){
+      warning("The OLS option may soon be deprecated")
+      beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
+    }else{# use a Beta regression model with weights
+      zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
+      theta = rbind(theta, zero_block)
+      obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
+      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
+      colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                         paste0("precision.", colnames(covariates)))
+      for(thetaindex in 1:ncol(theta_nonzero)){
+        beta[thetaindex,] = 
+          betareg::betareg.fit(y=theta_nonzero[,index],
+                               x=covariates,z=covariates,
+                               link = "logit", weights = obs_weights,
+                               link.phi = "log",  # link.phi is for the dispersion,
+                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+      }
     }
   }
   
@@ -112,8 +115,8 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
 #' @param output An object of class nmf_output
 #'
 #' @param samples The number of bootstrap samples to use.
-#' 
-#' @param constraint a logical indicating if the regression includes a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
+#'
+#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -127,7 +130,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
-boot_reg = function(output, samples, constraint = TRUE, ...){
+boot_reg = function(output, samples, ...){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -159,11 +162,9 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
     }
     
     ##### produce bootstrap sample and form associated theta and covariate
-    if(constraint){ # this is written so that the constraint logical can be removed safely
+    # this is written so that the constraint is automatically pushed through if it exists
       constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
-    }else{
-      constraint_block = NULL
-    }
+    
     covariate_block = head(covariates, ncol(theta))
     boot_docs = sample(1:ncol(theta), replace = T)
     boot_theta = theta[,boot_docs]
@@ -216,7 +217,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #'
 #' @param samples The number of bootstrap samples to use.
 #'
-#' @param constraint a logical indicating if the regression has a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
+#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -230,7 +231,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
-boot_reg_stratified = function(output, samples, constraint = TRUE,...){
+boot_reg_stratified = function(output, samples, ...){
   # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -253,11 +254,9 @@ boot_reg_stratified = function(output, samples, constraint = TRUE,...){
   covariates = output$covariates
   to_return = list()
   
-  if(constraint){#this is written so that the constraint logical can be removed
+  # this is written so that the constraint is automatically pushed through if it exists
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
-  }else{
-    constraint_block = NULL
-  }
+  
   covariate_block = head(covariates, ncol(theta))
   # identify the categories (remove the intercept)
   categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
@@ -278,14 +277,6 @@ boot_reg_stratified = function(output, samples, constraint = TRUE,...){
       sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
       sampled_inds = c(sampled_inds,sampled_indices)
       boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
-      # if(any(is.na(boot_docs[start+(1:group_count[[group_strat]])]))){
-      #   print("error")
-      #   print(sampled_indices)
-      #   print("start")
-      #   print(start)
-      #   print("inds")
-      #
-      # }
       start = start + group_count[[group_strat]]
     }
     
@@ -296,43 +287,18 @@ boot_reg_stratified = function(output, samples, constraint = TRUE,...){
     ##### set up a data frame for regression
     ##### fit a linear model on all topics using specified covariates
     boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
-    # if(0 %in% colSums(boot_covariates) | is.infinite(sum(boot_theta)) | is.na(sum(boot_theta))){
-    #   bad_samples = boot_docs
-    #   print(boot_docs)
-    #   print(i)
-    #   break
-    #
-    # }
     
     ##### create a new nmf_output object but with bootstrapped theta and covariate
     boot_output = output
     boot_output$theta = boot_theta
     boot_output$covariates = boot_covariates
 
-    # deprecated commented stuff    
-    # # note that theta should be normalized and sum to one.
-    # # however numerical precision isn't perfect and can lead to problems in the lm.fit
-    # # error handling for when numerical precision breaks things:
-    # if(all(boot_theta |> colSums()  == 1)){
-    #   ##### call get_regression_coefs and append list element
-      boot_coefs = get_regression_coefs(boot_output, ...)
-    #   to_return[[i]] = boot_coefs
-    # }else{
-    #   #potential problem cols where numerical precision was not perfect:
-    #   
-    #   boot_output$theta[,col_indices] = boot_theta
-    #   ##### call get_regression_coefs and append list element
-    #   boot_coefs = get_regression_coefs(boot_output, ...)
-    #   to_return[[i]] = boot_coefs
-    # }
-    
-    
+    boot_coefs = get_regression_coefs(boot_output, ...)
     
     ##### progress of iterations
     if(i %% 10 == 0){
       cat(i, " of ", samples, " bootstrap samples complete.\n")
     }
-    
   }
   
   ##### return
