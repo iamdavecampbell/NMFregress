@@ -7,6 +7,8 @@
 #'
 #' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null.
 #'
+#' @param OLS Logical for using OLS rather than beta regression
+#'
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
 #'
@@ -17,7 +19,7 @@
 #' get_regression_coefs(neurips_output)
 #'
 #' @export
-get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
+get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
@@ -53,7 +55,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
   ##### fit a linear model on all topics using specified covariates
   theta = apply(theta, FUN = normalize, MARGIN = 2)
   if(is.null(obs_weights)){
-    # the zero block thing will be deprecated when we get rid of the constraint.
+    # the zero block is used if a sum-to-zero constraint is included in the covariate matrix.
     # zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
     # theta = rbind(theta, zero_block)
     if(min(theta)==0){
@@ -63,11 +65,10 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
       theta_nonzero = theta
     }
     if(OLS == TRUE){
-      warning("The OLS option will be deprecated")
+      warning("The OLS option may soon be deprecated")
       beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
       
     }else{# use a Beta regression model
-      ###IN BOOT_REG AND BOOT_REG_STRATIFIED USE THE INPUT constraint = FALSE
       # index = 4
       print("make sure your covariates include an intercept if you want one...")
       # formula = as.formula(paste("y~-1+",paste(colnames(covariates), collapse="+") ,"|-1+",paste(colnames(covariates), collapse="+")))
@@ -106,13 +107,13 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = TRUE){
 }
 #' boot_reg
 #'
-#' Bootstrap OLS coefficients in order to estimate their sampling distribution.
+#' Bootstrap regression coefficients in order to estimate their sampling distribution.
 #'
 #' @param output An object of class nmf_output
 #'
 #' @param samples The number of bootstrap samples to use.
 #' 
-#' @param constraint a logical indicating if the regression has a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
+#' @param constraint a logical indicating if the regression includes a sum to zero constraint that forces coefficients to be interpreted as deviations from the intercept.  This is particularly useful if the covariates are all categorical.
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -140,7 +141,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
     stop("Samples must be a positive integer.")
   }
   
-  ##### set up matrices for OLS/list for return value
+  ##### set up matrices for regression/list for return value
   theta = output$theta
   covariates = output$covariates
   to_return = list()
@@ -158,7 +159,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
     }
     
     ##### produce bootstrap sample and form associated theta and covariate
-    if(constraint){
+    if(constraint){ # this is written so that the constraint logical can be removed safely
       constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
     }else{
       constraint_block = NULL
@@ -207,7 +208,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 
 #' boot_reg_stratified
 #'
-#' Bootstrap OLS coefficients in order to estimate their sampling distribution.
+#' Bootstrap regression coefficients in order to estimate their sampling distribution.
 #' Stratified bootstrap is used to maintain a constant number of individuals in each group when groups
 #' are categorical
 #'
@@ -230,7 +231,7 @@ boot_reg = function(output, samples, constraint = TRUE, ...){
 #'
 #' @export
 boot_reg_stratified = function(output, samples, constraint = TRUE,...){
-  # eventually deprecate the constraint and "..." options since the "..." for now is just to have the OLS option
+  # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -247,13 +248,12 @@ boot_reg_stratified = function(output, samples, constraint = TRUE,...){
     return(x/sum(x))
   }
   
-  ##### set up matrices for OLS/list for return value
+  ##### set up matrices for regression/list for return value
   theta = output$theta
   covariates = output$covariates
   to_return = list()
   
-  if(constraint){
-    print("the constraint will soon be deprecated.")
+  if(constraint){#this is written so that the constraint logical can be removed
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
   }else{
     constraint_block = NULL
