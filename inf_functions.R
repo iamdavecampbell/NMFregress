@@ -162,7 +162,8 @@ boot_reg = function(output, samples, ...){
     }
     
     ##### produce bootstrap sample and form associated theta and covariate
-    # this is written so that the constraint is automatically pushed through if it exists
+    # this is written so that a sum-to-one constraint is automatically pushed through if it exists
+    # note that sum to one constraints are incompatible with beta regression since it requires an observed zero
       constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
     
     covariate_block = head(covariates, ncol(theta))
