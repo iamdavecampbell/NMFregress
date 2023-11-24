@@ -55,8 +55,10 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   ##### fit a linear model on all topics using specified covariates
   
   if(min(theta)==0){
-    warning("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by 1e-12")
-    theta_nonzero = apply(theta_nonzero, FUN = normalize, MARGIN = 2)+1e-12
+    theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
+    epsilon = max(theta_nonzero)*1e-10
+    theta_nonzero = theta_nonzero + epsilon
+    warning(paste("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by", epsilon))
   }else{
     theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
   }
@@ -68,19 +70,35 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
       
     }else{# use a Beta regression model
       
-      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
+      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
       colnames(beta) = c(paste0("mean.", colnames(covariates)),
-                         paste0("precision.", colnames(covariates)))
+                         paste0("precision.", colnames(covariates)), "epsilon")
       for(thetaindex in 1:ncol(theta_nonzero)){
-        beta[thetaindex,] = 
-          betareg::betareg.fit(y=theta_nonzero[,thetaindex],
+        fail = 1
+        while(fail==1){
+          tryCatch({
+                 beta[thetaindex,] <- 
+                  c(betareg::betareg.fit(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                                x=covariates,z=covariates,
                                link = "logit", 
                                link.phi = "log",  # link.phi is for the dispersion,
-                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
+                    min(theta_nonzero[,thetaindex]))
+                 fail <- 0 #if it works
+          },error = function(e){fail <<-fail+1; cat(fail); cat(" it'll be ok ")},
+        finally= {
+          if(all(is.na(beta[thetaindex,]))){
+            if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+            fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
+            cat(fail)
+          }
+        }
+         )  
+          }
+          
+        }
       }
-    }
-  }else{ # with weights
+    }else{ # with weights
     if(OLS == TRUE){
       warning("The OLS option may soon be deprecated")
       beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
@@ -92,16 +110,35 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
       colnames(beta) = c(paste0("mean.", colnames(covariates)),
                          paste0("precision.", colnames(covariates)))
       for(thetaindex in 1:ncol(theta_nonzero)){
-        beta[thetaindex,] = 
-          betareg::betareg.fit(y=theta_nonzero[,index],
-                               x=covariates,z=covariates,
-                               link = "logit", weights = obs_weights,
-                               link.phi = "log",  # link.phi is for the dispersion,
-                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+        fail = 0
+        while(fail==0){
+          fail = 1
+          tryCatch({
+            cat(paste0("working on ", thetaindex))
+            beta[thetaindex,] = 
+              c(betareg::betareg.fit(y=theta_nonzero[,thetaindex],
+                                     x=covariates,z=covariates,
+                                     weights = obs_weights,
+                                     link = "logit", 
+                                     link.phi = "log",  # link.phi is for the dispersion,
+                                     type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
+                min(theta_nonzero[,thetaindex]))
+            fail = -1 #it works
+            
+          },error = function(e){print(fail)},
+          finally= {
+            if(all(is.na(beta[thetaindex,]))){
+              if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+              fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
+              theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+            }
+          }
+          )  
+        }
+        
       }
     }
-  }
-  
+    }
   ##### return
   rownames(beta) = output$anchors
   return(beta)
@@ -273,43 +310,42 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
   
   
   if(parallel ==1){
-  for(i in 1:samples){
-    
-    ##### produce bootstrap sample and form associated theta and covariate
-    
-    boot_docs = rep(NA, ncol(theta))
-    start = 0
-    sampled_inds = NULL
-    for(group_strat in group_levels){
-      sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
-      sampled_inds = c(sampled_inds,sampled_indices)
-      boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
-      start = start + group_count[[group_strat]]
-    }
-    
-    boot_theta = theta[,boot_docs]
-    boot_covariates = covariate_block[boot_docs,]
-    boot_covariates = rbind(boot_covariates, constraint_block)
-    
-    ##### set up a data frame for regression
-    ##### fit a linear model on all topics using specified covariates
-    boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
-    
-    ##### create a new nmf_output object but with bootstrapped theta and covariate
-    boot_output = output
-    boot_output$theta = boot_theta
-    boot_output$covariates = boot_covariates
+    for(i in 1:samples){
+      
+      ##### produce bootstrap sample and form associated theta and covariate
+      
+      boot_docs = rep(NA, ncol(theta))
+      start = 0
+      sampled_inds = NULL
+      for(group_strat in group_levels){
+        sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
+        sampled_inds = c(sampled_inds,sampled_indices)
+        boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
+        start = start + group_count[[group_strat]]
+      }
+      
+      boot_theta = theta[,boot_docs]
+      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = rbind(boot_covariates, constraint_block)
+      
+      ##### set up a data frame for regression
+      ##### fit a linear model on all topics using specified covariates
+      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      
+      ##### create a new nmf_output object but with bootstrapped theta and covariate
+      boot_output = output
+      boot_output$theta = boot_theta
+      boot_output$covariates = boot_covariates
 
-    boot_coefs = get_regression_coefs(boot_output)
-    to_return[[i]] = boot_coefs
-    
-    ##### progress of iterations
-    if(i %% 10 == 0){
-      cat(i, " of ", samples, " bootstrap samples complete.\n")
-    }
-  }
+      boot_coefs = get_regression_coefs(boot_output)
+      to_return[[i]] = boot_coefs
+      
+      ##### progress of iterations
+      if(i %% 10 == 0){
+        cat(i, " of ", samples, " bootstrap samples complete.\n")
+      }
+   }
   }else{
-    
     #parallel setup chunk 1 start
     library(doParallel)
     #create the cluster
@@ -319,7 +355,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
     #parallel setup chunk 1 end
     
     #parallel loop start
-    to_return<- foreach(i=1:samples, .export = ls()) %dopar% {
+    to_return<- foreach(i=1:samples, .export = c("get_regression_coefs"),
+                        .packages = "betareg") %dopar% {
       
       ##### produce bootstrap sample and form associated theta and covariate
       
@@ -348,12 +385,9 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
       
       return(get_regression_coefs(boot_output))
     }
-    
-    
   }
   ##### return
   return(to_return)
-  
 }
 
 
