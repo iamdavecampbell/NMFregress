@@ -7,7 +7,7 @@
 #'
 #' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null.
 #'
-#' @param OLS Logical for using OLS rather than beta regression
+#' @param OLS Logical for using OLS.  Alternative is to use beta regression
 #'
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
@@ -40,7 +40,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
     }
   }
   
-  ##### set up matrices for OLS/return value
+  ##### set up matrices for regression/return value
   theta = t(output$theta)
   covariates = output$covariates
   # handle spaces and odd characters in column names
@@ -54,7 +54,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
   
-  if(min(theta)==0){
+  if(min(theta)==0 & OLS != TRUE){
     theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
     epsilon = max(theta_nonzero)*1e-10
     theta_nonzero = theta_nonzero + epsilon
@@ -65,7 +65,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
   if(is.null(obs_weights)){
 
     if(OLS == TRUE){
-      warning("The OLS option may soon be deprecated")
+      
       beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
       
     }else{# use a Beta regression model
