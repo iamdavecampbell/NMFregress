@@ -9,6 +9,8 @@
 #'
 #' @param OLS Logical for using OLS.  Alternative is to use beta regression
 #'
+#' @param return_just_coefs is a logical, if TRUE then just return the coefficients, if FALSE, then return the output from the lm or betareg function.
+#' 
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
 #'
@@ -19,7 +21,7 @@
 #' get_regression_coefs(neurips_output)
 #'
 #' @export
-get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
+get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE){
   
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
@@ -58,25 +60,32 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
     theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
     epsilon = max(theta_nonzero)*1e-10
     theta_nonzero = theta_nonzero + epsilon
-    warning(paste("beta regresssion won't work with obvserved {0,1} since this will result in infinite betas; increasing all values by", epsilon))
+    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values by", epsilon))
   }else{
     theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
   }
   if(is.null(obs_weights)){
 
     if(OLS == TRUE){
-      
-      beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
+      if(return_just_coefs){
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
+        beta = t(beta)
+        rownames(beta) = output$anchors 
+      }else{# return the model output
+        beta = stats::lm.fit(x = covariates, y = theta)
+        colnames(beta$coefficients) = output$anchors 
+      }#end of using bootstrap T/F
       
     }else{# use a Beta regression model
-      
-      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
-      colnames(beta) = c(paste0("mean.", colnames(covariates)),
-                         paste0("precision.", colnames(covariates)), "epsilon")
+
+      if(return_just_coefs){
+        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
+        colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                           paste0("precision.", colnames(covariates)), "epsilon")
       for(thetaindex in 1:ncol(theta_nonzero)){
         fail = 1
         while(fail==1){
-          tryCatch({
+          tryCatch({ 
                  beta[thetaindex,] <- 
                   c(betareg::betareg.fit(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                                x=covariates,z=covariates,
@@ -85,7 +94,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
                                type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
                     min(theta_nonzero[,thetaindex]))
                  fail <- 0 #if it works
-          },error = function(e){fail <<-fail+1; cat(fail); cat(" it'll be ok ")},
+          },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
         finally= {
           if(all(is.na(beta[thetaindex,]))){
             if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
@@ -96,24 +105,62 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
          )  
           }
           
-        }
       }
+        beta = t(beta)
+        rownames(beta) = output$anchors 
+      }else{# return the betareg model output and not just the coefficients
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail==1){
+            tryCatch({ 
+              beta[[thetaindex]] = betareg::betareg(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                     x=covariates,z=covariates,
+                                     link = "logit", 
+                                     link.phi = "log",  # link.phi is for the dispersion,
+                                     type = "BC",control = betareg.control(fsmaxit = 10000))
+              fail <- 0 #if it works
+            },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
+            finally= {
+              if(all(is.na(beta[thetaindex,]))){
+                if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
+                cat(fail)
+              }
+            }
+            )  
+          }
+          
+        }
+        names(beta) = output$anchors
+         
+      }#end of return_just_coefs or the full model output (typically if not using bootstrap)
+    }# end of OLS = TRUE / FALSE
     }else{ # with weights
     if(OLS == TRUE){
-      warning("The OLS option may soon be deprecated")
-      beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
+      if(return_just_coefs){
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta, weights = obs_weights))
+        beta = t(beta)
+        rownames(beta) = output$anchors 
+      }else{# return the lm model output
+        beta = stats::lm.fit(x = covariates, y = theta, weights = obs_weights)
+        colnames(beta$coefficients) = output$anchors 
+      }
+        
     }else{# use a Beta regression model with weights
       zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
       theta = rbind(theta, zero_block)
       obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
-      beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
-      colnames(beta) = c(paste0("mean.", colnames(covariates)),
-                         paste0("precision.", colnames(covariates)))
-      for(thetaindex in 1:ncol(theta_nonzero)){
-        fail = 0
-        while(fail==0){
-          fail = 1
-          tryCatch({
+      if(return_just_coefs){# 
+        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
+        colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                           paste0("precision.", colnames(covariates)))
+        rownames(beta) = output$anchors
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 0
+          while(fail==0){
+            fail = 1
+            tryCatch({
             cat(paste0("working on ", thetaindex))
             beta[thetaindex,] = 
               c(betareg::betareg.fit(y=theta_nonzero[,thetaindex],
@@ -126,21 +173,55 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE){
             fail = -1 #it works
             
           },error = function(e){print(fail)},
-          finally= {
-            if(all(is.na(beta[thetaindex,]))){
-              if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
-              fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
-              theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+            finally= {
+              if(all(is.na(beta[thetaindex,]))){
+                if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
+                theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+              }
             }
+            )  
           }
-          )  
+          
         }
+      }else{
+        beta = list()
         
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 0
+          while(fail==0){
+            fail = 1
+            tryCatch({
+              cat(paste0("working on ", thetaindex))
+              beta[[thetaindex]] = 
+                betareg::betareg(y=theta_nonzero[,thetaindex],
+                                       x=covariates,z=covariates,
+                                       weights = obs_weights,
+                                       link = "logit", 
+                                       link.phi = "log",  # link.phi is for the dispersion,
+                                       type = "BC",control = betareg.control(fsmaxit = 10000))
+              fail = -1 #it works
+              
+            },error = function(e){print(fail)},
+            finally= {
+              if(all(is.na(beta[thetaindex,]))){
+                if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
+                theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+              }
+            }
+            )  
+          }
+          
+        }
+        names(beta) = output$anchors  
+        
+        # return the whole regression model
       }
     }
     }
   ##### return
-  rownames(beta) = output$anchors
+
   return(beta)
   
 }
@@ -188,7 +269,9 @@ boot_reg = function(output, samples, ...){
   ##### use a while loop; this is because bootstrap sample may not include all factor levels
   ##### throw out these samples
   ##### is there a better way of dealing with this?
-  for(i in 1:samples){
+  
+  if(samples!=1){### IF SAMPLES !=1 THEN USE BOOTSTRAP
+    for(i in 1:samples){
     
     ##### counter for samples where not all factor levels are present
     ##### counter for list elements (exclude bad samples in output)
@@ -231,7 +314,14 @@ boot_reg = function(output, samples, ...){
     }
     
   }
-  
+  }else{ ### samples ==1, THEN JUST DO REGRESSION WITH NO BOOTSTRAP
+    ##### produce bootstrap sample and form associated theta and covariate
+    # this is written so that a sum-to-one constraint is automatically pushed through if it exists
+    # note that sum to one constraints are incompatible with beta regression since it requires an observed
+    ##### call get_regression_coefs and append list element
+    boot_coefs = get_regression_coefs(boot_output, ...)
+    to_return[[j]] = boot_coefs
+  }
   ##### print warning message if bad_samples > 0
   if(bad_samples > 0){
     cat("Warning: not all factor levels present in ", bad_samples, " bootstrap samples.
@@ -337,7 +427,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
       boot_output$theta = boot_theta
       boot_output$covariates = boot_covariates
 
-      boot_coefs = get_regression_coefs(boot_output)
+      boot_coefs = get_regression_coefs(boot_output,...)
       to_return[[i]] = boot_coefs
       
       ##### progress of iterations
@@ -383,7 +473,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
       boot_output$theta = boot_theta
       boot_output$covariates = boot_covariates
       
-      return(get_regression_coefs(boot_output))
+      return(get_regression_coefs(boot_output,...))
     }
   }
   ##### return
