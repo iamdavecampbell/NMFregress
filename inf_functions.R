@@ -82,6 +82,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
         beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
         colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)), "epsilon")
+        rownames(beta) = output$anchors 
       for(thetaindex in 1:ncol(theta_nonzero)){
         fail = 1
         while(fail==1){
@@ -106,8 +107,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           }
           
       }
-        beta = t(beta)
-        rownames(beta) = output$anchors 
+
       }else{# return the betareg model output and not just the coefficients
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
@@ -186,7 +186,6 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
         }
       }else{
         beta = list()
-        
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 0
           while(fail==0){
@@ -214,7 +213,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           }
           
         }
-        names(beta) = output$anchors  
+        names(beta) = output$anchors 
         
         # return the whole regression model
       }
@@ -231,9 +230,9 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
 #'
 #' @param output An object of class nmf_output
 #'
-#' @param samples The number of bootstrap samples to use.
+#' @param samples The number of bootstrap samples to use. If set to 1 then return the full regression model output.  If >1, then collect the coefficients for bootstrap.
 #'
-#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
+#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE or (in future) obs_weights for regression though that is not yet active
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -270,7 +269,6 @@ boot_reg = function(output, samples, ...){
   ##### throw out these samples
   ##### is there a better way of dealing with this?
   
-  if(samples!=1){### IF SAMPLES !=1 THEN USE BOOTSTRAP
     for(i in 1:samples){
     
     ##### counter for samples where not all factor levels are present
@@ -283,11 +281,15 @@ boot_reg = function(output, samples, ...){
     ##### produce bootstrap sample and form associated theta and covariate
     # this is written so that a sum-to-one constraint is automatically pushed through if it exists
     # note that sum to one constraints are incompatible with beta regression since it requires an observed
-      constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
+    constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
     
     covariate_block = head(covariates, ncol(theta))
     boot_docs = sample(1:ncol(theta), replace = T)
     boot_theta = theta[,boot_docs]
+    # put the constraint back if it exists:
+    zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
+    boot_theta = cbind(theta, zero_block)
+    
     boot_covariates = covariate_block[boot_docs,]
     boot_covariates = rbind(boot_covariates, constraint_block)
     
@@ -314,14 +316,7 @@ boot_reg = function(output, samples, ...){
     }
     
   }
-  }else{ ### samples ==1, THEN JUST DO REGRESSION WITH NO BOOTSTRAP
-    ##### produce bootstrap sample and form associated theta and covariate
-    # this is written so that a sum-to-one constraint is automatically pushed through if it exists
-    # note that sum to one constraints are incompatible with beta regression since it requires an observed
-    ##### call get_regression_coefs and append list element
-    boot_coefs = get_regression_coefs(boot_output, ...)
-    to_return[[j]] = boot_coefs
-  }
+ 
   ##### print warning message if bad_samples > 0
   if(bad_samples > 0){
     cat("Warning: not all factor levels present in ", bad_samples, " bootstrap samples.
