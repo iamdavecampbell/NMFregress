@@ -21,7 +21,7 @@
 #' get_regression_coefs(neurips_output)
 #'
 #' @export
-get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE){
+get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE, formula = NULL){
   
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
@@ -45,8 +45,23 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
   ##### set up matrices for regression/return value
   theta = t(output$theta)
   covariates = output$covariates
+  
   # handle spaces and odd characters in column names
   colnames(covariates) =  make.names(colnames(covariates))
+  
+  
+  
+  # Deal with formulas for betaregression, put all covariates into the mean and precision
+  if(is.null(formula) & OLS != TRUE){
+    factors = colnames(covariates)
+    formula = as.formula(paste("y~", paste(
+      paste(factors, collapse="+"), "|",
+      paste(factors, collapse="+")
+    )
+    )
+    )
+  }
+  
   
   ##### simple function to normalize rows of theta
   normalize = function(x){
@@ -55,14 +70,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
+  theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
   
   if(min(theta)==0 & OLS != TRUE){
-    theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
     epsilon = max(theta_nonzero)*1e-10
     theta_nonzero = theta_nonzero + epsilon
     warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values by", epsilon))
-  }else{
-    theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
   }
   if(is.null(obs_weights)){
 
@@ -79,34 +92,56 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
     }else{# use a Beta regression model
 
       if(return_just_coefs){
-        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
-        colnames(beta) = c(paste0("mean.", colnames(covariates)),
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
+          colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)), "epsilon")
-        rownames(beta) = output$anchors 
-      for(thetaindex in 1:ncol(theta_nonzero)){
-        fail = 1
-        while(fail==1){
-          tryCatch({ 
-                 beta[thetaindex,] <- 
-                  c(betareg::betareg.fit(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                               x=covariates,z=covariates,
-                               link = "logit", 
-                               link.phi = "log",  # link.phi is for the dispersion,
-                               type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
-                    min(theta_nonzero[,thetaindex]))
-                 fail <- 0 #if it works
-          },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
-        finally= {
-          if(all(is.na(beta[thetaindex,]))){
-            if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
-            fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
-            cat(fail)
+          rownames(beta) = output$anchors 
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail==1){
+            tryCatch({ 
+              beta[thetaindex,] <- 
+                c(betareg::betareg.fit(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                       x=covariates,z=covariates,
+                                       link = "logit", 
+                                       link.phi = "log",  # link.phi is for the dispersion,
+                                       type = "BC",control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
+                  min(theta_nonzero[,thetaindex]))
+              fail <- 0 #if it works
+            },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
+            finally= {
+              if(all(is.na(beta[thetaindex,]))){
+                if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
+                cat(fail)
+              }
+            }
+            )  
+            
+            
+                    #   tryCatch({ 
+        #     data = cbind(theta[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+        #                  covariates)
+        #     colnames(data)  = c("y",colnames(covariates))
+        #          beta[thetaindex,] <- 
+        #           betareg::betareg(formula, data = data,
+        #                        link = "logit", 
+        #                        link.phi = "log",  # link.phi is for the dispersion,
+        #                        type = "BC",control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+        #           
+        #          fail <- 0 #if it works
+        #   },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
+        # finally= {
+        #   if(all(is.na(beta[thetaindex,]))){
+        #     if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+        #     fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
+        #     cat(fail)
+        #   }
+        # }
+        #  )  
           }
         }
-         )  
-          }
           
-      }
 
       }else{# return the betareg model output and not just the coefficients
         beta = list()
@@ -114,15 +149,17 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           fail = 1
           while(fail==1){
             tryCatch({ 
-              beta[[thetaindex]] = betareg::betareg(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                                     x=covariates,z=covariates,
+              # HEREHEREHERE should be able to get away with betareg.fit.  CHECK WHY THIS AND OTHER BETAREG BREAK
+              beta[[thetaindex]] = betareg::betareg.fit(y=theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                     x=covariates[,-1],
+                                     z=covariates[,-1],
                                      link = "logit", 
                                      link.phi = "log",  # link.phi is for the dispersion,
-                                     type = "BC",control = betareg.control(fsmaxit = 10000))
+                                     type = "BC",control = betareg::betareg.control(fsmaxit = 10000))
               fail <- 0 #if it works
             },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
             finally= {
-              if(all(is.na(beta[thetaindex,]))){
+              if(all(is.na(beta[[thetaindex]]))){
                 if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
                 fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
                 cat(fail)
@@ -168,7 +205,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
                                      weights = obs_weights,
                                      link = "logit", 
                                      link.phi = "log",  # link.phi is for the dispersion,
-                                     type = "BC",control = betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
+                                     type = "BC",control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
                 min(theta_nonzero[,thetaindex]))
             fail = -1 #it works
             
@@ -198,12 +235,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
                                        weights = obs_weights,
                                        link = "logit", 
                                        link.phi = "log",  # link.phi is for the dispersion,
-                                       type = "BC",control = betareg.control(fsmaxit = 10000))
+                                       type = "BC",control = betareg::betareg.control(fsmaxit = 10000))
               fail = -1 #it works
               
             },error = function(e){print(fail)},
             finally= {
-              if(all(is.na(beta[thetaindex,]))){
+              if(all(is.na(beta[[thetaindex]]))){
                 if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
                 fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
                 theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
