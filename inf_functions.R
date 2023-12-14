@@ -29,7 +29,8 @@
 #' get_regression_coefs(neurips_output)
 #'
 #' @export
-get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE, formula = NULL, link = "logit",
+get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE, formula = NULL,
+                                link = "logit",
                                 link.phi = "log", type = "ML"){
   
   ##### Check input types/whether they include covariates
@@ -61,13 +62,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
   
   
   # Deal with formulas for betaregression, put all covariates into the mean and precision
+  # Assume that if there is an intercept that it is provided by the user.
   if(is.null(formula) & OLS != TRUE){
     factors = colnames(covariates)
     formula = as.formula(paste("y~", paste(
-      paste(factors, collapse="+"), "|",
-      paste(factors, collapse="+")
-    )
-    )
+      paste(factors, collapse="+"), "-1 |",
+      paste(factors, collapse="+"),"-1"))
     )
   }
   
@@ -79,12 +79,13 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
-  theta_nonzero = apply(theta, FUN = normalize, MARGIN = 2)
-  
   if(min(theta)==0 & OLS != TRUE){
-    epsilon = max(theta_nonzero)*1e-10
-    theta_nonzero = theta_nonzero + epsilon
-    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values by", epsilon))
+    # increase all values by a tenth of fractional occurrence of a word within a topic:
+    # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
+    theta_nonzero = apply(theta, MARGIN = 2, function(x){normalize(x+min(10,min(x[x>0]/10)))})
+    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling"))
+  }else{
+    theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
   }
   if(is.null(obs_weights)){
 
@@ -101,7 +102,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
     }else{# use a Beta regression model
 
       if(return_just_coefs){
-          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates)+1)
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
           colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)), "epsilon")
           rownames(beta) = output$anchors 
@@ -110,14 +111,14 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           while(fail==1){
 
           tryCatch({
-            data = cbind(theta[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                         covariates)
+            data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
             colnames(data)  = c("y",colnames(covariates))
                  beta[thetaindex,] <-
                   betareg::betareg(formula, data = data,
                                link = link,
                                link.phi = link.phi,  # link.phi is for the dispersion,
-                               type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                               type = type,
+                               control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
 
                  fail <- 0 #if it works
           },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
