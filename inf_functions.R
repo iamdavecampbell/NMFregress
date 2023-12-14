@@ -104,7 +104,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
       if(return_just_coefs){
           beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
           colnames(beta) = c(paste0("mean.", colnames(covariates)),
-                           paste0("precision.", colnames(covariates)), "epsilon")
+                           paste0("precision.", colnames(covariates)))
           rownames(beta) = output$anchors 
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
@@ -143,11 +143,11 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
               data = cbind(theta[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                            covariates)
               colnames(data)  = c("y",colnames(covariates))
-              beta[thetaindex,] <-
+              beta[[thetaindex]] <-
                 betareg::betareg(formula, data = data,
                                  link = link,
                                  link.phi = link.phi,  # link.phi is for the dispersion,
-                                 type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                                 type = type,control = betareg::betareg.control(fsmaxit = 10000))
 
               fail <- 0 #if it works
             },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
@@ -193,13 +193,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
             tryCatch({
             cat(paste0("working on ", thetaindex))
             beta[thetaindex,] = 
-              c(betareg::betareg.fit(y=theta_nonzero[,thetaindex],
-                                     x=covariates,z=covariates,
-                                     weights = obs_weights,
-                                     link = link, 
-                                     link.phi = link.phi,  # link.phi is for the dispersion,
-                                     type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist(), 
-                min(theta_nonzero[,thetaindex]))
+              betareg::betareg(formula, data = data,
+                               link = link,
+                               weights = obs_weights,
+                               link.phi = link.phi,  # link.phi is for the dispersion,
+                               type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+            
             fail = -1 #it works
             
           },error = function(e){print(fail)},
@@ -223,12 +222,12 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
             tryCatch({
               cat(paste0("working on ", thetaindex))
               beta[[thetaindex]] = 
-                betareg::betareg(y=theta_nonzero[,thetaindex],
-                                       x=covariates,z=covariates,
-                                       weights = obs_weights,
-                                       link = link, 
-                                       link.phi = link.phi,  # link.phi is for the dispersion,
-                                       type = type,control = betareg::betareg.control(fsmaxit = 10000))
+                betareg::betareg(formula, data = data,
+                                 link = link,
+                                 weights = obs_weights,
+                                 link.phi = link.phi,  # link.phi is for the dispersion,
+                                 type = type,control = betareg::betareg.control(fsmaxit = 10000))
+              
               fail = -1 #it works
               
             },error = function(e){print(fail)},
