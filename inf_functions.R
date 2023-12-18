@@ -261,7 +261,19 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
 #'
 #' @param samples The number of bootstrap samples to use. If set to 1 then return the full regression model output.  If >1, then collect the coefficients for bootstrap.
 #'
-#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE or (in future) obs_weights for regression though that is not yet active
+#' @param obs_weights weights for observations to be passed to get_regression_coefs
+#' 
+#' @param OLS is a logical asking if OLS should be used rather than betaregression.  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' 
+#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' 
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
+#' 
+#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs
+#' 
+#' @param link.phi is the link function for the precision to be passed to get_regression_coefs
+#' 
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -275,7 +287,11 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
 #' boot_samples = boot_reg(neurips_output, 1000)
 #'
 #' @export
-boot_reg = function(output, samples, ...){
+boot_reg = function(output, samples, 
+                    obs_weights = NULL, OLS = FALSE, 
+                    return_just_coefs = TRUE, formula = NULL,
+                    link = "logit",
+                    link.phi = "log", type = "ML"){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -336,7 +352,14 @@ boot_reg = function(output, samples, ...){
     boot_output$covariates = boot_covariates
     
     ##### call get_regression_coefs and append list element
-    boot_coefs = get_regression_coefs(boot_output, ...)
+    boot_coefs = get_regression_coefs(boot_output, 
+                                      obs_weights = obs_weights, 
+                                      OLS = OLS, 
+                                      return_just_coefs = return_just_coefs, 
+                                      formula = formula,
+                                      link = link,
+                                      link.phi = link.phi, 
+                                      type = type)
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
@@ -370,7 +393,19 @@ boot_reg = function(output, samples, ...){
 #'
 #' @param parallel number of cores to use.  Skip the parallel overhead if using 1 core.
 #'
-#' @param ... additional inputs to be passed to get_regression_coefs, for now only available option is OLS = TRUE/FALSE
+#' @param obs_weights weights for observations to be passed to get_regression_coefs
+#' 
+#' @param OLS is a logical asking if OLS should be used rather than betaregression.  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' 
+#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' 
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
+#' 
+#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs
+#' 
+#' @param link.phi is the link function for the precision to be passed to get_regression_coefs
+#' 
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
@@ -385,8 +420,16 @@ boot_reg = function(output, samples, ...){
 #'
 #' @export
 #' 
-boot_reg_stratified = function(output, samples, parallel = 4,...){
-  # eventually deprecate the "..." options since the "..." for now is just to allow the OLS option
+boot_reg_stratified = function(output, samples, parallel = 4,
+                               boot_output, 
+                               obs_weights = obs_weights, 
+                               OLS = OLS, 
+                               return_just_coefs = return_just_coefs, 
+                               formula = formula,
+                               link = link,
+                               link.phi = link.phi, 
+                               type = type){
+  
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -451,7 +494,14 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
       boot_output$theta = boot_theta
       boot_output$covariates = boot_covariates
 
-      boot_coefs = get_regression_coefs(boot_output,...)
+      boot_coefs = get_regression_coefs(boot_output,
+                                        obs_weights = obs_weights, 
+                                        OLS = OLS, 
+                                        return_just_coefs = return_just_coefs, 
+                                        formula = formula,
+                                        link = link,
+                                        link.phi = link.phi, 
+                                        type = type)
       to_return[[i]] = boot_coefs
       
       ##### progress of iterations
@@ -497,7 +547,14 @@ boot_reg_stratified = function(output, samples, parallel = 4,...){
       boot_output$theta = boot_theta
       boot_output$covariates = boot_covariates
       
-      return(get_regression_coefs(boot_output,...))
+      return(get_regression_coefs(boot_output,
+                                  obs_weights = obs_weights, 
+                                  OLS = OLS, 
+                                  return_just_coefs = return_just_coefs, 
+                                  formula = formula,
+                                  link = link,
+                                  link.phi = link.phi, 
+                                  type = type))
     }
   }
   ##### return
