@@ -140,7 +140,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           fail = 1
           while(fail==1){
             tryCatch({
-              data = cbind(theta[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                            covariates)
               colnames(data)  = c("y",colnames(covariates))
               beta[[thetaindex]] <-
@@ -179,7 +179,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
         
     }else{# use a Beta regression model with weights
       zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-      theta = rbind(theta, zero_block)
+      theta_nonzero = rbind(theta_nonzero, zero_block)
       obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
       if(return_just_coefs){# 
         beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
@@ -289,7 +289,8 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
 #' @export
 boot_reg = function(output, samples, 
                     obs_weights = NULL, OLS = FALSE, 
-                    return_just_coefs = TRUE, formula = NULL,
+                    return_just_coefs = TRUE,
+                    formulas = TRUE, formula = NULL,
                     link = "logit",
                     link.phi = "log", type = "ML"){
   
@@ -333,7 +334,7 @@ boot_reg = function(output, samples,
     boot_theta = theta[,boot_docs]
     # put the constraint back if it exists:
     zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
-    boot_theta = cbind(theta, zero_block)
+    boot_theta = cbind(boot_theta, zero_block)
     
     boot_covariates = covariate_block[boot_docs,]
     boot_covariates = rbind(boot_covariates, constraint_block)
@@ -420,15 +421,15 @@ boot_reg = function(output, samples,
 #'
 #' @export
 #' 
+#' 
 boot_reg_stratified = function(output, samples, parallel = 4,
-                               boot_output, 
-                               obs_weights = obs_weights, 
-                               OLS = OLS, 
-                               return_just_coefs = return_just_coefs, 
-                               formula = formula,
-                               link = link,
-                               link.phi = link.phi, 
-                               type = type){
+                               obs_weights = NULL, 
+                               OLS = FALSE, 
+                               return_just_coefs = TRUE, 
+                               formula = NULL,
+                               link = "logit",
+                               link.phi = "log", 
+                               type = "ML"){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -457,11 +458,12 @@ boot_reg_stratified = function(output, samples, parallel = 4,
   
   # this is written so that the constraint is automatically pushed through if it exists
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
-  
+    zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
   covariate_block = head(covariates, ncol(theta))
   # identify the categories (remove the intercept)
   categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
   groups = apply(categorical_groups,1,function(x){names(x[x==1])})
+  
   group_levels = unique(groups)
   group_count = table(groups)
   
@@ -475,6 +477,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       start = 0
       sampled_inds = NULL
       for(group_strat in group_levels){
+        ####NOTE THIS NEEDS RETHINKING WHEN THERE ARE MULTIPLE COVARIATES
         sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
         sampled_inds = c(sampled_inds,sampled_indices)
         boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
@@ -482,6 +485,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       }
       
       boot_theta = theta[,boot_docs]
+      # put the constraint back if it exists:
+      boot_theta = cbind(boot_theta, zero_block)
       boot_covariates = covariate_block[boot_docs,]
       boot_covariates = rbind(boot_covariates, constraint_block)
       
@@ -535,6 +540,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       }
       
       boot_theta = theta[,boot_docs]
+      # put the constraint back if it exists:
+      boot_theta = cbind(boot_theta, zero_block)
       boot_covariates = covariate_block[boot_docs,]
       boot_covariates = rbind(boot_covariates, constraint_block)
       
