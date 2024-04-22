@@ -19,6 +19,8 @@
 #' 
 #' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively
 #' 
+#' @param theta_transformation transformation of theta matrix, currently only NULL or 'log-log' are allowed.  This will apply the "log(-log(theta))" transformation before regression
+#' 
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
 #'
@@ -29,10 +31,12 @@
 #' get_regression_coefs(neurips_output)
 #'
 #' @export
-get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_just_coefs = TRUE, formula = NULL,
+get_regression_coefs = function(output, obs_weights = NULL, 
+                                OLS = FALSE, return_just_coefs = TRUE, 
+                                formula = NULL,
                                 link = "logit",
-                                link.phi = "log", type = "ML"){
-  
+                                link.phi = "log", type = "ML",
+                                theta_transformation = NULL){
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -87,15 +91,20 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
   }else{
     theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
   }
+  if(!is.null(theta_transformation)){
+    if(theta_transformation == "log-log"){
+    # expands the [0-1] scaled values to the real line
+    theta_nonzero = log(-log(theta_nonzero))
+  }}
   if(is.null(obs_weights)){
 
     if(OLS == TRUE){
       if(return_just_coefs){
-        beta = stats::coef(stats::lm.fit(x = covariates, y = theta))
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
         beta = t(beta)
         rownames(beta) = output$anchors 
       }else{# return the model output
-        beta = stats::lm.fit(x = covariates, y = theta)
+        beta = stats::lm.fit(x = covariates, y = theta_nonzero)
         colnames(beta$coefficients) = output$anchors 
       }#end of using bootstrap T/F
       
@@ -141,9 +150,9 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           while(fail==1){
             tryCatch({
               data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                           covariates)
+                           covariates)|> as_data_frame()
               colnames(data)  = c("y",colnames(covariates))
-              beta[[thetaindex]] <-
+              beta[thetaindex] <-
                 betareg::betareg(formula, data = data,
                                  link = link,
                                  link.phi = link.phi,  # link.phi is for the dispersion,
@@ -152,7 +161,7 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
               fail <- 0 #if it works
             },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
             finally= {
-              if(all(is.na(beta[thetaindex,]))){
+              if(all(is.na(beta[[thetaindex]]))){
                 if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
                 fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
                 cat(fail)
@@ -169,11 +178,11 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
     }else{ # with weights
     if(OLS == TRUE){
       if(return_just_coefs){
-        beta = stats::coef(stats::lm.fit(x = covariates, y = theta, weights = obs_weights))
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights))
         beta = t(beta)
         rownames(beta) = output$anchors 
       }else{# return the lm model output
-        beta = stats::lm.fit(x = covariates, y = theta, weights = obs_weights)
+        beta = stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights)
         colnames(beta$coefficients) = output$anchors 
       }
         
@@ -220,8 +229,11 @@ get_regression_coefs = function(output, obs_weights = NULL, OLS = FALSE, return_
           while(fail==0){
             fail = 1
             tryCatch({
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as_data_frame()
+              colnames(data)  = c("y",colnames(covariates))
               cat(paste0("working on ", thetaindex))
-              beta[[thetaindex]] = 
+              beta[thetaindex] = 
                 betareg::betareg(formula, data = data,
                                  link = link,
                                  weights = obs_weights,
@@ -292,7 +304,8 @@ boot_reg = function(output, samples,
                     return_just_coefs = TRUE,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
-                    link.phi = "log", type = "ML"){
+                    link.phi = "log", type = "ML",
+                    theta_transformation = NULL){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -360,7 +373,8 @@ boot_reg = function(output, samples,
                                       formula = formula,
                                       link = link,
                                       link.phi = link.phi, 
-                                      type = type)
+                                      type = type, 
+                                      theta_transformation = theta_transformation)
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
