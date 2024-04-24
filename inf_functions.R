@@ -1,3 +1,4 @@
+require(mgcv)
 #' get_regression_coefs
 #'
 #' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
@@ -7,15 +8,15 @@
 #'
 #' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null.
 #'
-#' @param OLS Logical for using OLS.  Alternative is to use beta regression
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".   OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #'
 #' @param return_just_coefs is a logical, if TRUE then just return the coefficients, if FALSE, then return the output from the lm or betareg function.
 #' 
-#' @param formula is the formula to be passed into betareg.  Of the form Y~ model+for+mean | model+for+dispersion
+#' @param formula is the formula to be passed into betareg or GAM.  With betaregression, formula has the form Y~ model+for+mean | model+for+dispersion 
 #' 
-#' @param link is the link function for the GLM for the mean when using betaregression
+#' @param link is the link function for the GLM for the mean when using betaregression or GAM.
 #' 
-#' @param link.phi is the link function for the GLM for the precision when using betaregression
+#' @param link.phi is the link function for the GLM for the precision when using betaregression.
 #' 
 #' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively
 #' 
@@ -32,7 +33,8 @@
 #'
 #' @export
 get_regression_coefs = function(output, obs_weights = NULL, 
-                                OLS = FALSE, return_just_coefs = TRUE, 
+                                Model = c("BETA","GAM", "OLS"), 
+                                return_just_coefs = TRUE, 
                                 formula = NULL,
                                 link = "logit",
                                 link.phi = "log", type = "ML",
@@ -55,7 +57,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
       stop("Document weights and documents have differing lengths.")
     }
   }
-  
+  if(length(Model)==3){Model = "BETA"}
   ##### set up matrices for regression/return value
   theta = t(output$theta)
   covariates = output$covariates
@@ -67,14 +69,23 @@ get_regression_coefs = function(output, obs_weights = NULL,
   
   # Deal with formulas for betaregression, put all covariates into the mean and precision
   # Assume that if there is an intercept that it is provided by the user.
-  if(is.null(formula) & OLS != TRUE){
+  if(is.null(formula) & Model == "BETA"){
     factors = colnames(covariates)
     formula = as.formula(paste("y~", paste(
       paste(factors, collapse="+"), "-1 |",
       paste(factors, collapse="+"),"-1"))
     )
   }
-  
+  if(is.null(formula) & Model == "GAM"){
+    factors = colnames(covariates)
+    formula = as.formula(
+      paste("y~",
+        paste(
+          paste0("s(",factors,")"),
+                collapse="+")
+            )
+      )
+  }  
   
   ##### simple function to normalize rows of theta
   normalize = function(x){
@@ -83,22 +94,25 @@ get_regression_coefs = function(output, obs_weights = NULL,
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
-  if(min(theta)==0 & OLS != TRUE){
+  if(min(theta)==0 & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
     # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
     theta_nonzero = apply(theta, MARGIN = 2, function(x){normalize(x+min(10,min(x[x>0]/10)))})
-    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling"))
+    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.",
+                  "Minimum is now ", min(theta_nonzero)))
+    
   }else{
     theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
   }
   if(!is.null(theta_transformation)){
     if(theta_transformation == "log-log"){
-    # expands the [0-1] scaled values to the real line
-    theta_nonzero = log(-log(theta_nonzero))
-  }}
+      # expands the [0-1] scaled values to the real line
+      theta_nonzero = log(-log(theta_nonzero))
+    }else{warning("un-recognized theta_transformation; skipping it.")}
+  }
   if(is.null(obs_weights)){
 
-    if(OLS == TRUE){
+    if(Model == "OLS"){
       if(return_just_coefs){
         beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
         beta = t(beta)
@@ -107,76 +121,95 @@ get_regression_coefs = function(output, obs_weights = NULL,
         beta = stats::lm.fit(x = covariates, y = theta_nonzero)
         colnames(beta$coefficients) = output$anchors 
       }#end of using bootstrap T/F
-      
-    }else{# use a Beta regression model
-
-      if(return_just_coefs){
+    }else{
+      if(Model == "BETA"){# use a Beta regression model
+        if(return_just_coefs){
           beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
           colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)))
           rownames(beta) = output$anchors 
-        for(thetaindex in 1:ncol(theta_nonzero)){
-          fail = 1
-          while(fail==1){
-
-          tryCatch({
-            data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
-            colnames(data)  = c("y",colnames(covariates))
-                 beta[thetaindex,] <-
-                  betareg::betareg(formula, data = data,
-                               link = link,
-                               link.phi = link.phi,  # link.phi is for the dispersion,
-                               type = type,
-                               control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
-
-                 fail <- 0 #if it works
-          },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
-        finally= {
-          if(all(is.na(beta[thetaindex,]))){
-            if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
-            fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
-            cat(fail)
+          for(thetaindex in 1:ncol(theta_nonzero)){
+             fail = 1
+               tryCatch({
+                  while(fail!=0){
+                      data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
+                      colnames(data)  = c("y",colnames(covariates))
+                           beta[thetaindex,] <-
+                            betareg::betareg(formula, data = data,
+                                         link = link,
+                                         link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                         type = type,
+                                         control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                           fail <- 0 #if it works
+                  }# end while
+                 },# end trycatch expression
+                 error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+                 finally= {# completed
+                   cat(paste("\n Completed topic", thetaindex))
+                 }
+              )
           }
-        }
-         )
-          }
-        }
-          
-
+        names(beta) = output$anchors
       }else{# return the betareg model output and not just the coefficients
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
-          while(fail==1){
-            tryCatch({
-              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                           covariates)|> as_data_frame()
-              colnames(data)  = c("y",colnames(covariates))
-              beta[thetaindex] <-
-                betareg::betareg(formula, data = data,
-                                 link = link,
-                                 link.phi = link.phi,  # link.phi is for the dispersion,
-                                 type = type,control = betareg::betareg.control(fsmaxit = 10000))
-
-              fail <- 0 #if it works
-            },error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta regression fails because the smallest value is too close to zero.  Let's increase the smallest value and try again.")},
-            finally= {
-              if(all(is.na(beta[[thetaindex]]))){
-                if(fail != 1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
-                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 0->1->2->...
-                cat(fail)
-              }
+          tryCatch({
+              while(fail!=0){
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                             covariates)|> as_data_frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex] <-
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                   type = type,control = betareg::betareg.control(fsmaxit = 10000))
+                fail <- 0 #if it works
+              }# end while
+            },# end trycatch expression
+            error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
             }
-            )
-          }
-          
+          )
         }
         names(beta) = output$anchors
-         
       }#end of return_just_coefs or the full model output (typically if not using bootstrap)
-    }# end of OLS = TRUE / FALSE
+      }else{# MODEL == GAM
+        if(return_just_coefs){
+         ######
+          print("figure out what to extract")
+          
+          
+        }else{#return the whole model
+        
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+            tryCatch({
+                while(fail!=0){
+                  data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                 covariates)|> as.data.frame()
+                  colnames(data)  = c("y",colnames(covariates))
+                  beta[[thetaindex]] <- mgcv::gam(formula,
+                                                  family=mgcv::betar(link=link),
+                                                   data = data)
+                  fail <- 0 # if it works, then this will break out of the while loop.
+                }
+              },# end trycatch expression,
+              # if fails, then push fail back up to 1 from zero
+                error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+                finally= {# completed
+                   cat(paste("\n Completed topic", thetaindex))
+              }
+            )
+          }
+        names(beta) = output$anchors
+        # end of GAM with returning the whole model.
+      }
+    }# end of Model choice
     }else{ # with weights
-    if(OLS == TRUE){
+    if(Model == "OLS"){
       if(return_just_coefs){
         beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights))
         beta = t(beta)
@@ -186,7 +219,9 @@ get_regression_coefs = function(output, obs_weights = NULL,
         colnames(beta$coefficients) = output$anchors 
       }
         
-    }else{# use a Beta regression model with weights
+    }else{
+      if(Model == "BETA"){
+      # use a Beta regression model with weights
       zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
       theta_nonzero = rbind(theta_nonzero, zero_block)
       obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
@@ -205,7 +240,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
               betareg::betareg(formula, data = data,
                                link = link,
                                weights = obs_weights,
-                               link.phi = link.phi,  # link.phi is for the dispersion,
+                               link.phi = link.phi,  # link.phi is for the dispersion in betaregression
                                type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
             
             fail = -1 #it works
@@ -237,7 +272,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
                 betareg::betareg(formula, data = data,
                                  link = link,
                                  weights = obs_weights,
-                                 link.phi = link.phi,  # link.phi is for the dispersion,
+                                 link.phi = link.phi,  # link.phi is for the dispersion in betaregression
                                  type = type,control = betareg::betareg.control(fsmaxit = 10000))
               
               fail = -1 #it works
@@ -259,6 +294,11 @@ get_regression_coefs = function(output, obs_weights = NULL,
         # return the whole regression model
       }
     }
+      }else{
+        if(MODEL == "GAM"){
+          ######
+          print("GAM with weights looks doable")
+      }
     }
   ##### return
 
@@ -275,15 +315,15 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #'
 #' @param obs_weights weights for observations to be passed to get_regression_coefs
 #' 
-#' @param OLS is a logical asking if OLS should be used rather than betaregression.  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #' 
 #' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
 #' 
 #' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
 #' 
-#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs
+#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs or when using GAM
 #' 
-#' @param link.phi is the link function for the precision to be passed to get_regression_coefs
+#' @param link.phi is the link function for the precision to be passed to get_regression_coefs, only for betaregression
 #' 
 #' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
@@ -300,7 +340,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #'
 #' @export
 boot_reg = function(output, samples, 
-                    obs_weights = NULL, OLS = FALSE, 
+                    obs_weights = NULL, 
+                    Model = "BETA", 
                     return_just_coefs = TRUE,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
@@ -368,7 +409,7 @@ boot_reg = function(output, samples,
     ##### call get_regression_coefs and append list element
     boot_coefs = get_regression_coefs(boot_output, 
                                       obs_weights = obs_weights, 
-                                      OLS = OLS, 
+                                      Model = Model, 
                                       return_just_coefs = return_just_coefs, 
                                       formula = formula,
                                       link = link,
@@ -410,7 +451,7 @@ boot_reg = function(output, samples,
 #'
 #' @param obs_weights weights for observations to be passed to get_regression_coefs
 #' 
-#' @param OLS is a logical asking if OLS should be used rather than betaregression.  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #' 
 #' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
 #' 
@@ -438,7 +479,7 @@ boot_reg = function(output, samples,
 #' 
 boot_reg_stratified = function(output, samples, parallel = 4,
                                obs_weights = NULL, 
-                               OLS = FALSE, 
+                               Model = Model, 
                                return_just_coefs = TRUE, 
                                formula = NULL,
                                link = "logit",
@@ -515,7 +556,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 
       boot_coefs = get_regression_coefs(boot_output,
                                         obs_weights = obs_weights, 
-                                        OLS = OLS, 
+                                        Model = Model, 
                                         return_just_coefs = return_just_coefs, 
                                         formula = formula,
                                         link = link,
@@ -570,7 +611,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       
       return(get_regression_coefs(boot_output,
                                   obs_weights = obs_weights, 
-                                  OLS = OLS, 
+                                  Model = Model, 
                                   return_just_coefs = return_just_coefs, 
                                   formula = formula,
                                   link = link,
