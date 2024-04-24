@@ -111,7 +111,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
     }else{warning("un-recognized theta_transformation; skipping it.")}
   }
   if(is.null(obs_weights)){
-
+    
     if(Model == "OLS"){
       if(return_just_coefs){
         beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
@@ -130,84 +130,122 @@ get_regression_coefs = function(output, obs_weights = NULL,
           rownames(beta) = output$anchors 
           for(thetaindex in 1:ncol(theta_nonzero)){
              fail = 1
-               tryCatch({
-                  while(fail!=0){
-                      data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
-                      colnames(data)  = c("y",colnames(covariates))
-                           beta[thetaindex,] <-
-                            betareg::betareg(formula, data = data,
-                                         link = link,
-                                         link.phi = link.phi,  # link.phi is for the dispersion in betaregression
-                                         type = type,
-                                         control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
-                           fail <- 0 #if it works
-                  }# end while
-                 },# end trycatch expression
-                 error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
-                 finally= {# completed
-                   cat(paste("\n Completed topic", thetaindex))
-                 }
-              )
+             while(fail!=0){
+                tryCatch({
+                    data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
+                        colnames(data)  = c("y",colnames(covariates))
+                    beta[thetaindex,] <-
+                              betareg::betareg(formula, data = data,
+                                           link = link,
+                                           link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                           type = type,
+                                           control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                             fail <- 0 #if it works
+                   },# end trycatch expression
+                   error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+                   finally= {# completed
+                     cat(paste("\n Completed topic", thetaindex))
+                   }
+                )
+              }# end while
           }
         names(beta) = output$anchors
       }else{# return the betareg model output and not just the coefficients
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
-          tryCatch({
-              while(fail!=0){
+          while(fail!=0){
+            tryCatch({
                 data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                              covariates)|> as_data_frame()
                 colnames(data)  = c("y",colnames(covariates))
-                beta[thetaindex] <-
+                beta[[thetaindex]] <-
                   betareg::betareg(formula, data = data,
                                    link = link,
                                    link.phi = link.phi,  # link.phi is for the dispersion in betaregression
                                    type = type,control = betareg::betareg.control(fsmaxit = 10000))
                 fail <- 0 #if it works
-              }# end while
             },# end trycatch expression
             error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
             finally= {# completed
               cat(paste("\n Completed topic", thetaindex))
             }
           )
+          }# end while
         }
         names(beta) = output$anchors
       }#end of return_just_coefs or the full model output (typically if not using bootstrap)
-      }else{# MODEL == GAM
+      }else{# Model == GAM
         if(return_just_coefs){
-         ######
-          print("figure out what to extract")
-          
-          
-        }else{#return the whole model
-        
-        beta = list()
-        for(thetaindex in 1:ncol(theta_nonzero)){
-          fail = 1
-            tryCatch({
-                while(fail!=0){
-                  data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                                 covariates)|> as.data.frame()
-                  colnames(data)  = c("y",colnames(covariates))
-                  beta[[thetaindex]] <- mgcv::gam(formula,
-                                                  family=mgcv::betar(link=link),
-                                                   data = data)
-                  fail <- 0 # if it works, then this will break out of the while loop.
-                }
+          pred_X_vals = unique(covariates)
+          # inferring what is meant here, let's assume that it means predicting the GAM at 
+          # the input covariate values.
+          if(is.null(covariates|> dim())){
+            nrow_X = length(unique(covariates))
+            ncol_X = 1
+          }else{
+            nrow_X = nrow(unique(covariates))
+            ncol_X = ncol(unique(covariates))
+          }
+          # make a place to put the predicted values.
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_X)
+          if(ncol_X==1){
+            colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+          }else{
+            colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+                                   1,
+                                   function(x){paste0("X.",x, collapse=".")})
+          }
+          rownames(beta) = output$anchors 
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0){
+              tryCatch({  
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                             covariates)|> as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex,] <- mgcv::gam(formula,
+                                                family=mgcv::betar(link=link),
+                                                data = data)|>
+                  predict(newdata = pred_X_vals)
+                fail <- 0 # if it works, then this will break out of the while loop.
               },# end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-                error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
-                finally= {# completed
-                   cat(paste("\n Completed topic", thetaindex))
+              error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                cat(paste("\n Completed topic", thetaindex))
               }
             )
-          }
+          }#end while
+        }# end for loop
+        }else{#return the whole model
+          beta = list()
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0){
+              tryCatch({
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                   covariates)|> as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[[thetaindex]] <- mgcv::gam(formula,
+                                                    family=mgcv::betar(link=link),
+                                                     data = data)
+                fail <- 0 # if it works, then this will break out of the while loop.
+              },# end trycatch expression,
+              # if fails, then push fail back up to 1 from zero
+              error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                    cat(paste("\n Completed topic", thetaindex))
+              }
+            )
+          }# end while
+        }# end forloop
         names(beta) = output$anchors
         # end of GAM with returning the whole model.
+    }
       }
     }# end of Model choice
+    
     }else{ # with weights
     if(Model == "OLS"){
       if(return_just_coefs){
@@ -294,11 +332,77 @@ get_regression_coefs = function(output, obs_weights = NULL,
         # return the whole regression model
       }
     }
-      }else{
-        if(MODEL == "GAM"){
-          ######
-          print("GAM with weights looks doable")
+    }else{# Model == GAM
+      if(return_just_coefs){
+        pred_X_vals = unique(covariates)
+        # inferring what is meant here, let's assume that it means predicting the GAM at 
+        # the input covariate values.
+        if(is.null(covariates|> dim())){
+          nrow_X = length(unique(covariates))
+          ncol_X = 1
+        }else{
+          nrow_X = nrow(unique(covariates))
+          ncol_X = ncol(unique(covariates))
+        }
+        # make a place to put the predicted values.
+        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_X)
+        if(ncol_X==1){
+          colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+        }else{
+          colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+                                 1,
+                                 function(x){paste0("X.",x, collapse=".")})
+        }
+        rownames(beta) = output$anchors 
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail!=0){
+            tryCatch({  
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as.data.frame()
+              colnames(data)  = c("y",colnames(covariates))
+              beta[thetaindex,] <- mgcv::gam(formula,
+                                             family=mgcv::betar(link=link),
+                                             data = data,
+                                             weights)|>
+                predict(newdata = pred_X_vals)
+              fail <- 0 # if it works, then this will break out of the while loop.
+            },# end trycatch expression,
+            # if fails, then push fail back up to 1 from zero
+            error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
+            }
+            )
+          }#end while
+        }# end for loop
+      }else{#return the whole model
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail!=0){
+            tryCatch({
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as.data.frame()
+              colnames(data)  = c("y",colnames(covariates))
+              beta[[thetaindex]] <- mgcv::gam(formula,
+                                              family=mgcv::betar(link=link),
+                                              data = data,
+                                              weights = obs_weights)
+              fail <- 0 # if it works, then this will break out of the while loop.
+            },# end trycatch expression,
+            # if fails, then push fail back up to 1 from zero
+            error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
+            }
+            )
+          }# end while
+        }# end forloop
+        names(beta) = output$anchors
+        # end of GAM with returning the whole model.
       }
+    }
     }
   ##### return
 
