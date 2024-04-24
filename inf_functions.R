@@ -243,7 +243,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         names(beta) = output$anchors
         # end of GAM with returning the whole model.
     }
-      }
+      }# end of GAM
     }# end of Model choice
     
     }else{ # with weights
@@ -331,7 +331,6 @@ get_regression_coefs = function(output, obs_weights = NULL,
         
         # return the whole regression model
       }
-    }
     }else{# Model == GAM
       if(return_just_coefs){
         pred_X_vals = unique(covariates)
@@ -402,12 +401,11 @@ get_regression_coefs = function(output, obs_weights = NULL,
         names(beta) = output$anchors
         # end of GAM with returning the whole model.
       }
-    }
-    }
+    }# end of GAM
+    }# end of model choice
+    }# end of obs weights
   ##### return
-
   return(beta)
-  
 }
 #' boot_reg
 #'
