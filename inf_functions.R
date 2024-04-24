@@ -1,24 +1,44 @@
+require(mgcv)
 #' get_regression_coefs
+#'
+#' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
+#' weight. Estimates are produced simultaneously for all topics.
+#'
+#' @param output An object of class nmf_output.
+#'
+#' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null.
+#'
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".   OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#'
+#' @param return_just_coefs is a logical, if TRUE then just return the coefficients, if FALSE, then return the output from the lm or betareg function.
 #' 
-#' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic 
-#' weight. Estimates are produced simultaneously for all topics.   
+#' @param formula is the formula to be passed into betareg or GAM.  With betaregression, formula has the form Y~ model+for+mean | model+for+dispersion 
 #' 
-#' @param output An object of class nmf_output. 
+#' @param link is the link function for the GLM for the mean when using betaregression or GAM.
 #' 
-#' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null. 
+#' @param link.phi is the link function for the GLM for the precision when using betaregression.
 #' 
-#' @return A matrix of regression coefficients (named if column names have been specified 
-#' for the design matrix). 
+#' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively
 #' 
-#' @examples 
-#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#' @param theta_transformation transformation of theta matrix, currently only NULL or 'log-log' are allowed.  This will apply the "log(-log(theta))" transformation before regression
+#' 
+#' @return A matrix of regression coefficients (named if column names have been specified
+#' for the design matrix).
+#'
+#' @examples
+#' neurips_input = create_input(neurips_tdm, neurips_words,
 #'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
 #' neurips_output = solve_nmf(neurips_input)
 #' get_regression_coefs(neurips_output)
-#' 
-#' @export 
-get_regression_coefs = function(output, obs_weights = NULL){
-   
+#'
+#' @export
+get_regression_coefs = function(output, obs_weights = NULL, 
+                                Model = c("BETA","GAM", "OLS"), 
+                                return_just_coefs = TRUE, 
+                                formula = NULL,
+                                link = "logit",
+                                link.phi = "log", type = "ML",
+                                theta_transformation = NULL){
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -37,57 +57,398 @@ get_regression_coefs = function(output, obs_weights = NULL){
       stop("Document weights and documents have differing lengths.")
     }
   }
+  if(length(Model)==3){Model = "BETA"}
+  ##### set up matrices for regression/return value
+  theta = t(output$theta)
+  covariates = output$covariates
   
-  ##### set up matrices for OLS/return value
-  theta = t(output$theta) 
-  covariates = output$covariates 
+  # handle spaces and odd characters in column names
+  colnames(covariates) =  make.names(colnames(covariates))
   
-  ##### simple function to normalize rows of theta 
+  
+  
+  # Deal with formulas for betaregression, put all covariates into the mean and precision
+  # Assume that if there is an intercept that it is provided by the user.
+  if(is.null(formula) & Model == "BETA"){
+    factors = colnames(covariates)
+    formula = as.formula(paste("y~", paste(
+      paste(factors, collapse="+"), "-1 |",
+      paste(factors, collapse="+"),"-1"))
+    )
+  }
+  if(is.null(formula) & Model == "GAM"){
+    factors = colnames(covariates)
+    formula = as.formula(
+      paste("y~",
+        paste(
+          paste0("s(",factors,")"),
+                collapse="+")
+            )
+      )
+  }  
+  
+  ##### simple function to normalize rows of theta
   normalize = function(x){
     return(x/sum(x))
   }
   
-  ##### set up a data frame for regression 
+  ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
-  theta = apply(theta, FUN = normalize, MARGIN = 2)
-  if(is.null(obs_weights)){
-    zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-    theta = rbind(theta, zero_block)
-    beta = stats::coef(stats::lm.fit(x = covariates, y = theta)) 
+  if(min(theta)==0 & Model %in% c("BETA", "GAM")){
+    # increase all values by a tenth of fractional occurrence of a word within a topic:
+    # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
+    theta_nonzero = apply(theta, MARGIN = 2, function(x){normalize(x+min(10,min(x[x>0]/10)))})
+    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.",
+                  "Minimum is now ", min(theta_nonzero)))
+    
   }else{
-    zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-    theta = rbind(theta, zero_block)
-    obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
-    beta = stats::coef(stats::lm.wfit(x = covariates, y = theta, w = obs_weights))  
+    theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
   }
-  
+  if(!is.null(theta_transformation)){
+    if(theta_transformation == "log-log"){
+      # expands the [0-1] scaled values to the real line
+      theta_nonzero = log(-log(theta_nonzero))
+    }else{warning("un-recognized theta_transformation; skipping it.")}
+  }
+  if(is.null(obs_weights)){
+    
+    if(Model == "OLS"){
+      if(return_just_coefs){
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
+        beta = t(beta)
+        rownames(beta) = output$anchors 
+      }else{# return the model output
+        beta = stats::lm.fit(x = covariates, y = theta_nonzero)
+        colnames(beta$coefficients) = output$anchors 
+      }#end of using bootstrap T/F
+    }else{
+      if(Model == "BETA"){# use a Beta regression model
+        if(return_just_coefs){
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
+          colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                           paste0("precision.", colnames(covariates)))
+          rownames(beta) = output$anchors 
+          for(thetaindex in 1:ncol(theta_nonzero)){
+             fail = 1
+             while(fail!=0){
+                tryCatch({
+                    data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
+                        colnames(data)  = c("y",colnames(covariates))
+                    beta[thetaindex,] <-
+                              betareg::betareg(formula, data = data,
+                                           link = link,
+                                           link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                           type = type,
+                                           control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+                             fail <- 0 #if it works
+                   },# end trycatch expression
+                   error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+                   finally= {# completed
+                     cat(paste("\n Completed topic", thetaindex))
+                   }
+                )
+              }# end while
+          }
+        names(beta) = output$anchors
+      }else{# return the betareg model output and not just the coefficients
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail!=0){
+            tryCatch({
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                             covariates)|> as_data_frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[[thetaindex]] <-
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                   type = type,control = betareg::betareg.control(fsmaxit = 10000))
+                fail <- 0 #if it works
+            },# end trycatch expression
+            error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
+            }
+          )
+          }# end while
+        }
+        names(beta) = output$anchors
+      }#end of return_just_coefs or the full model output (typically if not using bootstrap)
+      }else{# Model == GAM
+        if(return_just_coefs){
+          pred_X_vals = unique(covariates)
+          # inferring what is meant here, let's assume that it means predicting the GAM at 
+          # the input covariate values.
+          if(is.null(covariates|> dim())){
+            nrow_X = length(unique(covariates))
+            ncol_X = 1
+          }else{
+            nrow_X = nrow(unique(covariates))
+            ncol_X = ncol(unique(covariates))
+          }
+          # make a place to put the predicted values.
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_X)
+          if(ncol_X==1){
+            colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+          }else{
+            colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+                                   1,
+                                   function(x){paste0("X.",x, collapse=".")})
+          }
+          rownames(beta) = output$anchors 
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0){
+              tryCatch({  
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                             covariates)|> as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex,] <- mgcv::gam(formula,
+                                                family=mgcv::betar(link=link),
+                                                data = data)|>
+                  predict(newdata = pred_X_vals)
+                fail <- 0 # if it works, then this will break out of the while loop.
+              },# end trycatch expression,
+              # if fails, then push fail back up to 1 from zero
+              error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                cat(paste("\n Completed topic", thetaindex))
+              }
+            )
+          }#end while
+        }# end for loop
+        }else{#return the whole model
+          beta = list()
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0){
+              tryCatch({
+                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                                   covariates)|> as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[[thetaindex]] <- mgcv::gam(formula,
+                                                    family=mgcv::betar(link=link),
+                                                     data = data)
+                fail <- 0 # if it works, then this will break out of the while loop.
+              },# end trycatch expression,
+              # if fails, then push fail back up to 1 from zero
+              error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                    cat(paste("\n Completed topic", thetaindex))
+              }
+            )
+          }# end while
+        }# end forloop
+        names(beta) = output$anchors
+        # end of GAM with returning the whole model.
+    }
+      }# end of GAM
+    }# end of Model choice
+    
+    }else{ # with weights
+    if(Model == "OLS"){
+      if(return_just_coefs){
+        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights))
+        beta = t(beta)
+        rownames(beta) = output$anchors 
+      }else{# return the lm model output
+        beta = stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights)
+        colnames(beta$coefficients) = output$anchors 
+      }
+        
+    }else{
+      if(Model == "BETA"){
+      # use a Beta regression model with weights
+      zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
+      theta_nonzero = rbind(theta_nonzero, zero_block)
+      obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
+      if(return_just_coefs){# 
+        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
+        colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                           paste0("precision.", colnames(covariates)))
+        rownames(beta) = output$anchors
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 0
+          while(fail==0){
+            fail = 1
+            tryCatch({
+            cat(paste0("working on ", thetaindex))
+            beta[thetaindex,] = 
+              betareg::betareg(formula, data = data,
+                               link = link,
+                               weights = obs_weights,
+                               link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                               type = type,control = betareg::betareg.control(fsmaxit = 10000))|> coefficients()|> unlist()
+            
+            fail = -1 #it works
+            
+          },error = function(e){print(fail)},
+            finally= {
+              if(all(is.na(beta[thetaindex,]))){
+                if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
+                theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+              }
+            }
+            )  
+          }
+          
+        }
+      }else{
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 0
+          while(fail==0){
+            fail = 1
+            tryCatch({
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as_data_frame()
+              colnames(data)  = c("y",colnames(covariates))
+              cat(paste0("working on ", thetaindex))
+              beta[thetaindex] = 
+                betareg::betareg(formula, data = data,
+                                 link = link,
+                                 weights = obs_weights,
+                                 link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                 type = type,control = betareg::betareg.control(fsmaxit = 10000))
+              
+              fail = -1 #it works
+              
+            },error = function(e){print(fail)},
+            finally= {
+              if(all(is.na(beta[[thetaindex]]))){
+                if(fail != -1){cat(paste(fail, "fail for index ", thetaindex, " epsilon = ", min(theta_nonzero[,thetaindex])))}
+                fail <<- fail + 1; #if it worked now fail = 0,  if it didn't work then fail is growing 2+
+                theta_nonzero[,thetaindex] <<- theta_nonzero[,thetaindex]+fail*min(theta_nonzero[,thetaindex])*.5; 
+              }
+            }
+            )  
+          }
+          
+        }
+        names(beta) = output$anchors 
+        
+        # return the whole regression model
+      }
+    }else{# Model == GAM
+      if(return_just_coefs){
+        pred_X_vals = unique(covariates)
+        # inferring what is meant here, let's assume that it means predicting the GAM at 
+        # the input covariate values.
+        if(is.null(covariates|> dim())){
+          nrow_X = length(unique(covariates))
+          ncol_X = 1
+        }else{
+          nrow_X = nrow(unique(covariates))
+          ncol_X = ncol(unique(covariates))
+        }
+        # make a place to put the predicted values.
+        beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_X)
+        if(ncol_X==1){
+          colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+        }else{
+          colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+                                 1,
+                                 function(x){paste0("X.",x, collapse=".")})
+        }
+        rownames(beta) = output$anchors 
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail!=0){
+            tryCatch({  
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as.data.frame()
+              colnames(data)  = c("y",colnames(covariates))
+              beta[thetaindex,] <- mgcv::gam(formula,
+                                             family=mgcv::betar(link=link),
+                                             data = data,
+                                             weights)|>
+                predict(newdata = pred_X_vals)
+              fail <- 0 # if it works, then this will break out of the while loop.
+            },# end trycatch expression,
+            # if fails, then push fail back up to 1 from zero
+            error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
+            }
+            )
+          }#end while
+        }# end for loop
+      }else{#return the whole model
+        beta = list()
+        for(thetaindex in 1:ncol(theta_nonzero)){
+          fail = 1
+          while(fail!=0){
+            tryCatch({
+              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
+                           covariates)|> as.data.frame()
+              colnames(data)  = c("y",colnames(covariates))
+              beta[[thetaindex]] <- mgcv::gam(formula,
+                                              family=mgcv::betar(link=link),
+                                              data = data,
+                                              weights = obs_weights)
+              fail <- 0 # if it works, then this will break out of the while loop.
+            },# end trycatch expression,
+            # if fails, then push fail back up to 1 from zero
+            error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
+            finally= {# completed
+              cat(paste("\n Completed topic", thetaindex))
+            }
+            )
+          }# end while
+        }# end forloop
+        names(beta) = output$anchors
+        # end of GAM with returning the whole model.
+      }
+    }# end of GAM
+    }# end of model choice
+    }# end of obs weights
   ##### return
-  beta = t(beta)
-  rownames(beta) = output$anchors 
   return(beta)
-  
 }
-#' boot_reg 
+#' boot_reg
+#'
+#' Bootstrap regression coefficients in order to estimate their sampling distribution.
+#'
+#' @param output An object of class nmf_output
+#'
+#' @param samples The number of bootstrap samples to use. If set to 1 then return the full regression model output.  If >1, then collect the coefficients for bootstrap.
+#'
+#' @param obs_weights weights for observations to be passed to get_regression_coefs
 #' 
-#' Bootstrap OLS coefficients in order to estimate their sampling distribution.   
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #' 
-#' @param output An object of class nmf_output 
+#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
 #' 
-#' @param samples The number of bootstrap samples to use. 
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
 #' 
+#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs or when using GAM
+#' 
+#' @param link.phi is the link function for the precision to be passed to get_regression_coefs, only for betaregression
+#' 
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
+#'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
-#' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a 
+#' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
-#' of the associated estimator; see boot_plot() and create_error_bars().  
-#' 
-#' @examples 
-#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#' of the associated estimator; see boot_plot() and create_error_bars().
+#'
+#' @examples
+#' neurips_input = create_input(neurips_tdm, neurips_words,
 #'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
 #' neurips_output = solve_nmf(neurips_input)
 #' boot_samples = boot_reg(neurips_output, 1000)
-#' 
-#' @export 
-boot_reg = function(output, samples){ 
+#'
+#' @export
+boot_reg = function(output, samples, 
+                    obs_weights = NULL, 
+                    Model = "BETA", 
+                    return_just_coefs = TRUE,
+                    formulas = TRUE, formula = NULL,
+                    link = "logit",
+                    link.phi = "log", type = "ML",
+                    theta_transformation = NULL){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -101,33 +462,41 @@ boot_reg = function(output, samples){
     stop("Samples must be a positive integer.")
   }
   
-  ##### set up matrices for OLS/list for return value 
-  theta = output$theta 
-  covariates = output$covariates 
-  to_return = list() 
+  ##### set up matrices for regression/list for return value
+  theta = output$theta
+  covariates = output$covariates
+  to_return = list()
   
   ##### use a while loop; this is because bootstrap sample may not include all factor levels
-  ##### throw out these samples 
-  ##### is there a better way of dealing with this? 
-  for(i in 1:samples){
+  ##### throw out these samples
+  ##### is there a better way of dealing with this?
+  
+    for(i in 1:samples){
     
     ##### counter for samples where not all factor levels are present
     ##### counter for list elements (exclude bad samples in output)
     bad_samples = 0
     if(i == 1){
-      j = 0 
+      j = 0
     }
     
     ##### produce bootstrap sample and form associated theta and covariate
+    # this is written so that a sum-to-one constraint is automatically pushed through if it exists
+    # note that sum to one constraints are incompatible with beta regression since it requires an observed
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
+    
     covariate_block = head(covariates, ncol(theta))
     boot_docs = sample(1:ncol(theta), replace = T)
     boot_theta = theta[,boot_docs]
+    # put the constraint back if it exists:
+    zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
+    boot_theta = cbind(boot_theta, zero_block)
+    
     boot_covariates = covariate_block[boot_docs,]
     boot_covariates = rbind(boot_covariates, constraint_block)
     
     ##### check if all factor levels are used for appropriate variables
-    ##### jump to next iteration if not 
+    ##### jump to next iteration if not
     if(0 %in% colSums(boot_covariates)){
       bad_samples = bad_samples + 1
       next
@@ -137,22 +506,30 @@ boot_reg = function(output, samples){
     ##### create a new nmf_output object but with bootstrapped theta and covariate
     boot_output = output
     boot_output$theta = boot_theta
-    boot_output$covariates = boot_covariates 
+    boot_output$covariates = boot_covariates
     
     ##### call get_regression_coefs and append list element
-    boot_coefs = get_regression_coefs(boot_output) 
+    boot_coefs = get_regression_coefs(boot_output, 
+                                      obs_weights = obs_weights, 
+                                      Model = Model, 
+                                      return_just_coefs = return_just_coefs, 
+                                      formula = formula,
+                                      link = link,
+                                      link.phi = link.phi, 
+                                      type = type, 
+                                      theta_transformation = theta_transformation)
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
     if(i %% 10 == 0){
       cat(i, " of ", samples, " bootstrap samples complete.\n")
     }
-  
+    
   }
-  
+ 
   ##### print warning message if bad_samples > 0
   if(bad_samples > 0){
-    cat("Warning: not all factor levels present in ", bad_samples, " bootstrap samples. 
+    cat("Warning: not all factor levels present in ", bad_samples, " bootstrap samples.
         These samples have been excluded from the output -- inferences may be affected as a result.\n")
   }
   
@@ -162,29 +539,54 @@ boot_reg = function(output, samples){
 }
 
 
-#' boot_reg_stratified 
-#' 
-#' Bootstrap OLS coefficients in order to estimate their sampling distribution.   
-#' Stratified bootstrap is used to maintain a constant number of individuals in each group when groups 
+#' boot_reg_stratified
+#'
+#' Bootstrap regression coefficients in order to estimate their sampling distribution.
+#' Stratified bootstrap is used to maintain a constant number of individuals in each group when groups
 #' are categorical
 #'
-#' @param output An object of class nmf_output 
+#' @param output An object of class nmf_output
+#'
+#' @param samples The number of bootstrap samples to use.
+#'
+#' @param parallel number of cores to use.  Skip the parallel overhead if using 1 core.
+#'
+#' @param obs_weights weights for observations to be passed to get_regression_coefs
 #' 
-#' @param samples The number of bootstrap samples to use. 
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #' 
+#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' 
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
+#' 
+#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs
+#' 
+#' @param link.phi is the link function for the precision to be passed to get_regression_coefs
+#' 
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
+#'
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
-#' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a 
+#' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
-#' of the associated estimator; see boot_plot() and create_error_bars().  
-#' 
-#' @examples 
-#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#' of the associated estimator; see boot_plot() and create_error_bars().
+#'
+#' @examples
+#' neurips_input = create_input(neurips_tdm, neurips_words,
 #'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
 #' neurips_output = solve_nmf(neurips_input)
 #' boot_samples = boot_reg(neurips_output, 1000)
+#'
+#' @export
 #' 
-#' @export 
-boot_reg_stratified = function(output, samples){ 
+#' 
+boot_reg_stratified = function(output, samples, parallel = 4,
+                               obs_weights = NULL, 
+                               Model = Model, 
+                               return_just_coefs = TRUE, 
+                               formula = NULL,
+                               link = "logit",
+                               link.phi = "log", 
+                               type = "ML"){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -197,130 +599,163 @@ boot_reg_stratified = function(output, samples){
   if(samples <= 0){
     stop("Samples must be a positive integer.")
   }
-  ##### simple function to normalize rows of theta 
+  parallel = as.integer(parallel)
+  if(parallel <= 0){
+    stop("parallel must be a positive integer.")
+  }
+  ##### simple function to normalize rows of theta
   normalize = function(x){
     return(x/sum(x))
   }
   
-  ##### set up matrices for OLS/list for return value 
-  theta = output$theta 
-  covariates = output$covariates 
-  to_return = list() 
+  ##### set up matrices for regression/list for return value
+  theta = output$theta
+  covariates = output$covariates
+  to_return = list()
   
-  
-  constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
+  # this is written so that the constraint is automatically pushed through if it exists
+    constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
+    zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
   covariate_block = head(covariates, ncol(theta))
   # identify the categories (remove the intercept)
-  categorical_groups = covariate_block[,
-                                       apply(output$covariates,2,sum) != dim(covariate_block)[1]  
-  ]
+  categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
   groups = apply(categorical_groups,1,function(x){names(x[x==1])})
+  
   group_levels = unique(groups)
   group_count = table(groups)
   
   
-  
-  for(i in 1:samples){
-    
-    ##### produce bootstrap sample and form associated theta and covariate
-    
-    boot_docs = rep(NA, ncol(theta))
-    start = 0
-    sampled_inds = NULL
-    for(group_strat in group_levels){
-      sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
-      sampled_inds = c(sampled_inds,sampled_indices)
-      boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
-      # if(any(is.na(boot_docs[start+(1:group_count[[group_strat]])]))){
-      #   print("error")
-      #   print(sampled_indices)
-      #   print("start")
-      #   print(start)
-      #   print("inds")
-      #   
-      # }
-      start = start + group_count[[group_strat]]
-    }
-    
-    boot_theta = theta[,boot_docs]
-    boot_covariates = covariate_block[boot_docs,]
-    boot_covariates = rbind(boot_covariates, constraint_block)
-    
-    ##### set up a data frame for regression 
-    ##### fit a linear model on all topics using specified covariates
-    boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
-    # if(0 %in% colSums(boot_covariates) | is.infinite(sum(boot_theta)) | is.na(sum(boot_theta))){
-    #   bad_samples = boot_docs
-    #   print(boot_docs)
-    #   print(i)
-    #   break
-    #   
-    # }
-    
-    ##### create a new nmf_output object but with bootstrapped theta and covariate
-    boot_output = output
-    boot_output$theta = boot_theta
-    boot_output$covariates = boot_covariates 
-    
-    # note that theta should be normalized and sum to one.  
-    # however numerical precision isn't perfect and can lead to problems in the lm.fit
-    # error handling for when numerical precision breaks things:
-    if(all(boot_theta |> colSums()  == 1)){
-      ##### call get_regression_coefs and append list element
-      boot_coefs = get_regression_coefs(boot_output) 
+  if(parallel ==1){
+    for(i in 1:samples){
+      
+      ##### produce bootstrap sample and form associated theta and covariate
+      
+      boot_docs = rep(NA, ncol(theta))
+      start = 0
+      sampled_inds = NULL
+      for(group_strat in group_levels){
+        ####NOTE THIS NEEDS RETHINKING WHEN THERE ARE MULTIPLE COVARIATES
+        sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
+        sampled_inds = c(sampled_inds,sampled_indices)
+        boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
+        start = start + group_count[[group_strat]]
+      }
+      
+      boot_theta = theta[,boot_docs]
+      # put the constraint back if it exists:
+      boot_theta = cbind(boot_theta, zero_block)
+      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = rbind(boot_covariates, constraint_block)
+      
+      ##### set up a data frame for regression
+      ##### fit a linear model on all topics using specified covariates
+      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      
+      ##### create a new nmf_output object but with bootstrapped theta and covariate
+      boot_output = output
+      boot_output$theta = boot_theta
+      boot_output$covariates = boot_covariates
+
+      boot_coefs = get_regression_coefs(boot_output,
+                                        obs_weights = obs_weights, 
+                                        Model = Model, 
+                                        return_just_coefs = return_just_coefs, 
+                                        formula = formula,
+                                        link = link,
+                                        link.phi = link.phi, 
+                                        type = type)
       to_return[[i]] = boot_coefs
-    }else{
-      #potential problem cols where numerical precision was not perfect:
-      nugget = 10* max(abs(1-(colSums(boot_theta) )))
-      col_indices = which(colSums(boot_theta)!=1)
-      boot_output$theta[,col_indices] = boot_theta[,col_indices] + nugget
-      ##### call get_regression_coefs and append list element
-      boot_coefs = get_regression_coefs(boot_output) 
-      to_return[[i]] = boot_coefs
+      
+      ##### progress of iterations
+      if(i %% 10 == 0){
+        cat(i, " of ", samples, " bootstrap samples complete.\n")
+      }
+   }
+  }else{
+    #parallel setup chunk 1 start
+    library(doParallel)
+    #create the cluster
+    my.cluster <- parallel::makeCluster(parallel)
+    doParallel::registerDoParallel(cl = my.cluster)
+    # defaults to fork on linux and psock on windows
+    #parallel setup chunk 1 end
+    
+    #parallel loop start
+    to_return<- foreach(i=1:samples, .export = c("get_regression_coefs"),
+                        .packages = "betareg") %dopar% {
+      
+      ##### produce bootstrap sample and form associated theta and covariate
+      
+      boot_docs = rep(NA, ncol(theta))
+      start = 0
+      sampled_inds = NULL
+      for(group_strat in group_levels){
+        sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
+        sampled_inds = c(sampled_inds,sampled_indices)
+        boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
+        start = start + group_count[[group_strat]]
+      }
+      
+      boot_theta = theta[,boot_docs]
+      # put the constraint back if it exists:
+      boot_theta = cbind(boot_theta, zero_block)
+      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = rbind(boot_covariates, constraint_block)
+      
+      ##### set up a data frame for regression
+      ##### fit a linear model on all topics using specified covariates
+      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      
+      ##### create a new nmf_output object but with bootstrapped theta and covariate
+      boot_output = output
+      boot_output$theta = boot_theta
+      boot_output$covariates = boot_covariates
+      
+      return(get_regression_coefs(boot_output,
+                                  obs_weights = obs_weights, 
+                                  Model = Model, 
+                                  return_just_coefs = return_just_coefs, 
+                                  formula = formula,
+                                  link = link,
+                                  link.phi = link.phi, 
+                                  type = type))
     }
-    
-    
-    
-    ##### progress of iterations
-    if(i %% 10 == 0){
-      cat(i, " of ", samples, " bootstrap samples complete.\n")
-    }
-  
   }
-  
   ##### return
   return(to_return)
-  
 }
 
-#' boot_plot 
-#' 
-#' Plot smoothed histograms of regression effects for a given topic. 
-#' 
-#' @param boot_samples A list of bootstrap samples, as produced by boot_reg(). 
-#' 
-#' @param topic The topic to use as the response variable, labeled by its anchor word. 
-#' 
+
+
+
+#' boot_plot
+#'
+#' Plot smoothed histograms of regression effects for a given topic.
+#'
+#' @param boot_samples A list of bootstrap samples, as produced by boot_reg().
+#'
+#' @param topic The topic to use as the response variable, labeled by its anchor word.
+#'
 #' @return A list as produced by ggplot2. Calling this function without assignment to a variable
-#' will send a plot to the plotting window. 
-#' 
-#' @examples 
-#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#' will send a plot to the plotting window.
+#'
+#' @examples
+#' neurips_input = create_input(neurips_tdm, neurips_words,
 #'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
 #' neurips_output = solve_nmf(neurips_input)
 #' boot_samples = boot_reg(neurips_output, 1000)
 #' boot_plot(boot_samples, "model")
-#' 
-#' @export 
+#'
+#' @export
 boot_plot = function(boot_samples, topic){
   
-  ##### check inputs 
+  ##### check inputs
   if(!(is.list(boot_samples))){
-    stop("boot_samples must be a list of vectors/matrices, as output by 
+    stop("boot_samples must be a list of vectors/matrices, as output by
               boot_reg().")
   }
   if(!(is.matrix(boot_samples[[1]]))){
-    stop("boot_samples must be a list of matrices, as output by 
+    stop("boot_samples must be a list of matrices, as output by
               boot_reg().")
   }
   if(!(topic %in% row.names(boot_samples[[1]]))){
@@ -342,64 +777,64 @@ boot_plot = function(boot_samples, topic){
   boot_effect = reshape2::melt(boot_effect)
   names(boot_effect) = c("covar", "weight")
   
-  ##### create and evaluate plot 
+  ##### create and evaluate plot
   topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=weight, y=covar))+
     ggridges::stat_density_ridges(fill = "lightblue")+
     ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
-    ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)), 
-         x = expression(beta), 
-         y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
+    ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)),
+                  x = expression(beta),
+                  y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
   eval(topic_plot)
   
 }
 #' create_error_bars
-#'  
-#' Output a data frame with two-sided, 95% confidence intervals based on bootstrap estimates of 
-#' sampling distributions. 
-#' 
-#' @param boot_samples A list of bootstrap samples, as produced by boot_reg(). 
-#' 
-#' @return A data frame. Each row corresponds to a covariate and the columns give the CI. 
-#' 
-#' @examples 
-#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#'
+#' Output a data frame with two-sided, 95% confidence intervals based on bootstrap estimates of
+#' sampling distributions.
+#'
+#' @param boot_samples A list of bootstrap samples, as produced by boot_reg().
+#'
+#' @return A data frame. Each row corresponds to a covariate and the columns give the CI.
+#'
+#' @examples
+#' neurips_input = create_input(neurips_tdm, neurips_words,
 #'    topics = 10, project = TRUE, proj_dim = 500, covariates = year_bins)
 #' neurips_output = solve_nmf(neurips_input)
 #' boot_samples = boot_reg(neurips_output, 1000)
 #' create_error_bars(boot_samples)
-#' 
-#' @export 
+#'
+#' @export
 create_error_bars = function(boot_samples, coverage = .95){
   
-  ##### check inputs 
+  ##### check inputs
   if(!(is.list(boot_samples))){
-    stop("boot_samples must be a list of matrices, as outputted by 
+    stop("boot_samples must be a list of matrices, as outputted by
               boot_reg().")
   }
   if(!(is.matrix(boot_samples[[1]]))){
-    stop("boot_samples must be a list of matrices, as outputted by 
+    stop("boot_samples must be a list of matrices, as outputted by
               boot_reg(). This function does not yet support large design matrices.")
   }
   if(!(0 < coverage & coverage < 1)){
     stop("coverage must be a numerical value in the interval (0,1).")
   }
   
-  ##### melt and name a data frame of samples 
+  ##### melt and name a data frame of samples
   sample_frame = reshape2::melt(boot_samples)
   names(sample_frame) = c("topic", "coef", "estimate", "sample")
   
   ##### construct data frame w/ all possible covariate/topic combinations
-  ##### fill with corresponding quantiles 
+  ##### fill with corresponding quantiles
   error_frame = expand.grid(unique(sample_frame$topic), unique(sample_frame$coef))
   names(error_frame) = c("topic", "coef")
   for(i in 1:nrow(error_frame)){
-    subset_frame = sample_frame[sample_frame$topic == error_frame$topic[i] & 
+    subset_frame = sample_frame[sample_frame$topic == error_frame$topic[i] &
                                   sample_frame$coef == error_frame$coef[i],]
     error_frame$lower[i] = stats::quantile(subset_frame$estimate, (1-coverage)/2)
     error_frame$upper[i] = stats::quantile(subset_frame$estimate, coverage + (1 - coverage)/2)
   }
   
-  ##### return 
+  ##### return
   return(error_frame)
   
 }
