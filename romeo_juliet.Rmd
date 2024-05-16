@@ -1,0 +1,187 @@
+---
+title: "A Brief Tutorial on NMFregress"
+author: Gabriel Phelan & Dave Campbell
+date: May 2024
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This document will serve as a brief introduction to the `NMFregress` package, which smashes together a host of ideas surrounding non-negative matrix factorization (NMF) and non-parametric inference. The point is to solve some problems that are typically addressed using complicated probabilistic graphical models. There's nothing wrong with graphical models; in fact, they're quite cool! The issue is that fitting them can be a major pain; entire careers have been built around inference algorithms for graphical models. Despite the rapid progress in this field -- think HMC and its implementation in the wonderful Stan package -- certain model classes have yet to be adorned with inference schemes whose speed, ease of use, and statistical accuracy are fully convincing. For this reason we take a different tack. The basic idea is to slap permutation tests and the boostrap on top of some recent developments in NMF research. Motivation is provided by topic models in which there is some sort of discrete covariate over the documents -- we might partition news stories by their source or a collection of books by author, for instance. This is the setting we'll stick to in what follows, but know that `NMFregress` can be used for good old NMF, whatever your application domain might be. The package's langauge is unabashedly slanted towards topic models, but you can simply ignore that and get on with factoring matrices if you wish; for example, a "term-document matrix" could really be any non-negative data matrix. Please refer to [link to thesis when available] for further details on the motivation and underlying mathematics, as well as references to the literature. 
+
+## 1. Building a Corpus
+
+We want to do topic modelling, so we'll need some documents. Let's use Romeo and Juliet (RJ), freely available on Project Gutenberg: https://www.gutenberg.org/ebooks/1112. Lines in the play will be considered documents, and we'll partition them by the act in which they appear. Since acts are deliberately chosen to divide a play's plot into coherent segments, we should be able to detect statistical variation in Shakespeare's language as the play progresses. I've prepared a term-document matrix (TDM) and a factor containing the play's acts using an admittedly haphazard script contained in this repository -- it's not the prettiest but it gets the job done. Let's load the library and the RJ data: 
+
+
+```{r}
+# It's clunky for for version 0.5 just source the files after cloning the git repo
+# library(NMFregress)
+```
+
+```{r, message = FALSE}
+library(tidyverse)
+# It's clunky for for version 0.5 just source the files after cloning the git repo
+anchor_files = list.files("../NMFregress", pattern = ".R$")
+lapply(paste0("../NMFregress/",anchor_files), source)
+
+# make the datasets available
+load(paste0("../NMFregress/data/tdm.Rdata"))
+load(paste0("../NMFregress/data/words.Rdata"))
+load(paste0("../NMFregress/data/acts.Rdata"))
+```
+
+
+## 2. Initializing an Object for NMF
+
+The first step is to build an object that can be passed to the NMF solver. Rather than the solver requiring a slew of arguments, we instead create an object of class `nmf_input` which carries around the necesarry pieces, specified once and for all by the user. Most importantly, the user must create and pass a term-document matrix, which is a good ol' R matrix -- not a term-document matrix as created using some other topic modelling packages. You're on your own here -- we provide no functionality for creating a TDM or any of the other pre-processing that topic modelling usually entails. Also of note: we really mean TDM, and not DTM! Make sure the words are rows, otherwise everything will come out backwards! 
+ 
+ 
+Once you've got your TDM, you need some discrete covariate structure over the documents -- a partitioning, as we'll refer to it. These are the acts of RJ in our example. The first 217 documents (which recall are lines in the play) belong to act one, for instance. This is encoded as a factor of equal length to the number of documents, with the entries giving the value of the covariate like so:
+
+```{r}
+acts = factor(acts, levels = c("one","two","three","four","five"))
+head(acts)
+
+```
+To make use of the covariates we need something that will act like a design matrix.  Let's convert _acts_ into a dummy variable.  Let's also make a numeric version of acts so that we can test our additional functionality. 
+
+```{r}
+acts_numeric = acts|> case_match(
+  "one" ~ 1,
+  "two" ~ 2,
+  "three" ~ 3,
+  "four" ~ 4,
+  "five" ~ 5
+)
+acts_numeric = data.frame(intercept = 1, act = acts_numeric )
+
+acts_dummy = model.matrix(~.,data.frame(acts))
+```
+
+
+
+
+Finally, we'll need a character vector which contains all the unique words in the corpus. Crucially, they have to be in the same order as that of the TDM's rows. Again, you're on your own here -- create this vector however you see fit. Here's the first 25 words in our RJ courpus:
+
+```{r}
+head(words, n = 25)
+```
+
+
+That's it! Now simply run 
+
+```{r}
+my_input = create_input(tdm, vocab = words, covariates = acts_dummy, topics = 25)
+```
+
+which creates an object `my_input` of class `nmf_input` (this is basically just a named list); the last argument tells the solver we want 25 topics in our topic model. 
+
+## 3. Solving NMF 
+
+Since `my_input` contains (nearly) all the information the solver needs, we now simply put 
+
+```{r, results="hide"}
+my_output = solve_nmf(my_input)
+```
+
+And there you have it. `my_output` contains $\Phi$ (the word-topic matrix), $\Theta$ (the topic-document matrix), the anchor words, and some relevant infomration from `my_input` that the inference functions will need to do their thing:
+
+```{r}
+str(my_output)
+```
+
+If you're just interested in the usual topic modelling pipeline, then you're done at this stage. Print the top words for each topic using 
+
+```{r}
+print_top_words(my_output, n = 10)
+``` 
+
+where `n=10` says we'd like 10 words printed per topic. Topics are labelled by their anchor word. 
+
+Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distorition. But, for large matrices this is a really nice option; we'd specify something like 
+
+```{r,  eval = FALSE}
+my_input = create_input(tdm, words, covariates = acts, topics = 25 , project = TRUE, proj_dim = 200)
+my_output = solve_nmf(my_input)
+```
+
+which tells the solver we'd like to project down to 200 dimensions to find the anchor words and likewise for solving the non-negative least squares problems that constitute convex NMF. It's up to you to get these dimensions right -- that is, ensuring that they are actually smaller than the input dimension (which is the number of columns in the TDM). For some context, we've solved NMF for matrices of size ~ 10,000 x 6,000 in a matter of minutes with very good results. Again, this is down to the data as well -- the more signal your TDM carries, the better these projections will work. 
+
+## 4. Inferece I. OLS and bootstrap
+
+The interpretation of performing regression on something akin to a probabilistic topic model implies that OLS will probably break the Gauss Markov theorem conditions.  However it is reasonable to use under some conditions.  Linear models are appropriate here if we set act as a factor and we use bootstrap for interval estimates.
+
+ Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run:
+
+```{r, message = FALSE}
+OLS_bootstrap = boot_reg(my_output, samples = 1000, Model = "OLS")
+
+```
+A formula could be specified.  By default a formula is derived from all the columns of the covariate matrix.  Note that an intercept must be provided  as a column of the covariate matrix if you go this default route.
+
+What we get is the bootstrap samples for the regression model of $text_i = \beta_0+ \sum_{act = 1}^4 X_{i,act} \beta_{act} + error_i$.
+
+Let's extract and plot the effect sizes for the regression coefficients for the topics of **love** and **night**.
+Note that we ran a model where act 1 was the baseline, so if all other effects are positive or negative relative to the baseline.  I am rounding the error bars, for viewing convenience. 
+
+```{r}
+boot_plot(OLS_bootstrap, "juliet")
+boot_plot(OLS_bootstrap, "dead")
+
+create_error_bars(OLS_bootstrap, topic = c("dead"))|>
+    dplyr::mutate(
+      dplyr::across(is.numeric, ~round(.,digits =4))
+      )
+
+```
+
+## 5. Inference II.  Beta regression and Asymptotic inference.
+
+Beta regression is useful when the data is bounded (0,1) and we wish to model covariates which are factors of continuous.  Here we just have **acts** to model, so for the purposes of exposition let's assume that the topic of interest, **dead** may be building up as the play moves along.
+
+Note that Beta regression is much slower than OLS.  We could still use bootstrap, but be prepared to wait orders of magnitude longer. Instead we set **samples=1** and **return_just_coefs=FALSE**.  This runs beta regression from the **betareg** package on each selected topic.  The entire output of the **betareg::betareg** is returned for each topic selected.  There is substantial flexibility for setting up models for the mean and precision.  Here by default we use the same model for each based on the full set of coefficients and the default logit link for the mean and a log link for precision.
+
+First we swap out the covariates from the setup so that we run the model of interest. Then we select the topics of interest.  Here we will use:
+\{"night","love","juliet", "death", "dead"\}.
+
+```{r, message = FALSE}
+my_output$covariates = acts_numeric
+beta_asymptotic = boot_reg(my_output, 
+                           samples = 1, Model = "BETA", 
+                           return_just_coefs = FALSE,
+                           topics = c("night","love","juliet", "death", "dead"))
+
+
+```
+Model output a list of length = the number of samples.  Since we have **samples =1** then we need to extract the model output from the first element of the list.  Then we can call by topic and use the asymptotic results for the beta regression.
+
+
+```{r}
+beta_asymptotic[[1]]$dead|> summary()
+```
+
+acts_numeric
+
+
+```{r}
+run_sk(my_output, tolerance = 1e-5, maxiter = 100)
+``` 
+
+Those last two arguments just control convergence, and make sure the algorithm doesn't run forever. It's nice to sort it, such as with 
+
+```{r}
+rj_mat = run_sk(my_output)
+sort(rj_mat[,"five"], decreasing = TRUE)
+``` 
+
+So `juliet`, `death`, and `dead` are highly associated with act V. Go figure. 
+
+## The End ## 
+
+Cool. Hope that gives you a feel for the package. Happy NMF'ing! 
+
