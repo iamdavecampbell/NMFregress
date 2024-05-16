@@ -1,4 +1,5 @@
 require(mgcv)
+require(dplyr)
 #' get_regression_coefs
 #'
 #' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
@@ -798,6 +799,10 @@ boot_plot = function(boot_samples, topic){
 #'
 #' @param boot_samples A list of bootstrap samples, as produced by boot_reg().
 #'
+#' @param topic the selected topic(s) of interest for inference, default is all topics, though this is often too much output to be useful.
+#' 
+#'  @param coverage the level of coverage for the interval, default is 95%
+#'
 #' @return A data frame. Each row corresponds to a covariate and the columns give the CI.
 #'
 #' @examples
@@ -808,7 +813,7 @@ boot_plot = function(boot_samples, topic){
 #' create_error_bars(boot_samples)
 #'
 #' @export
-create_error_bars = function(boot_samples, coverage = .95){
+create_error_bars = function(boot_samples, topic = NULL, coverage = .95){
   
   ##### check inputs
   if(!(is.list(boot_samples))){
@@ -825,6 +830,9 @@ create_error_bars = function(boot_samples, coverage = .95){
   
   ##### melt and name a data frame of samples
   sample_frame = reshape2::melt(boot_samples)
+  if(!is.null(topic)){
+    sample_frame = dplyr::filter(sample_frame, Var1 %in% topic)
+  }
   names(sample_frame) = c("topic", "coef", "estimate", "sample")
   
   ##### construct data frame w/ all possible covariate/topic combinations
@@ -834,9 +842,12 @@ create_error_bars = function(boot_samples, coverage = .95){
   for(i in 1:nrow(error_frame)){
     subset_frame = sample_frame[sample_frame$topic == error_frame$topic[i] &
                                   sample_frame$coef == error_frame$coef[i],]
-    error_frame$lower[i] = stats::quantile(subset_frame$estimate, (1-coverage)/2)
-    error_frame$upper[i] = stats::quantile(subset_frame$estimate, coverage + (1 - coverage)/2)
+    error_frame$lower[i]  = stats::quantile(subset_frame$estimate, (1-coverage)/2)
+    error_frame$median[i] = stats::quantile(subset_frame$estimate, .5)
+    error_frame$upper[i]  = stats::quantile(subset_frame$estimate, coverage + (1 - coverage)/2)
   }
+  colnames(error_frame)[3:5] = paste0(c("lower","upper"),coverage)
+  
   
   ##### return
   return(error_frame)
