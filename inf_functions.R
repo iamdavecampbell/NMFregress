@@ -425,6 +425,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #' 
 #' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#'
+#' @param topics is a vector of the subset of topics of interest.  Default is to perform regression on all topics. 
 #' 
 #' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
 #' 
@@ -434,6 +436,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #' 
 #' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
+#' 
 #' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
@@ -450,6 +453,7 @@ boot_reg = function(output, samples,
                     obs_weights = NULL, 
                     Model = c("BETA", "GAM", "OLS"), 
                     return_just_coefs = TRUE,
+                    topics = NULL,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
                     link.phi = "log", type = "ML",
@@ -468,7 +472,11 @@ boot_reg = function(output, samples,
   }
   
   ##### set up matrices for regression/list for return value
-  theta = output$theta
+  if(is.null(topics)){
+    topics = output$anchors
+  }
+  # select the rows corresponding to topics selected:
+  theta = output$theta[which(output$anchors%in% topics),]
   covariates = output$covariates
   to_return = list()
   
@@ -559,8 +567,10 @@ boot_reg = function(output, samples,
 #' @param obs_weights weights for observations to be passed to get_regression_coefs
 #' 
 #' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
-#' 
+#'
 #' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' 
+#' @param topics is a vector of the subset of topics of interest.  Default is to perform regression on all topics.
 #' 
 #' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
 #' 
@@ -588,6 +598,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                                obs_weights = NULL, 
                                Model = Model, 
                                return_just_coefs = TRUE, 
+                               topics = NULL,
                                formula = NULL,
                                link = "logit",
                                link.phi = "log", 
@@ -612,10 +623,13 @@ boot_reg_stratified = function(output, samples, parallel = 4,
   normalize = function(x){
     return(x/sum(x))
   }
-  
   ##### set up matrices for regression/list for return value
-  theta = output$theta
-  covariates = output$covariates
+  if(is.null(topics)){
+    topics = output$anchors
+  }
+  # select the rows corresponding to topics selected:
+  theta = output$theta[which(output$anchors%in% topics),]
+    covariates = output$covariates
   to_return = list()
   
   # this is written so that the constraint is automatically pushed through if it exists
@@ -846,7 +860,7 @@ create_error_bars = function(boot_samples, topic = NULL, coverage = .95){
     error_frame$median[i] = stats::quantile(subset_frame$estimate, .5)
     error_frame$upper[i]  = stats::quantile(subset_frame$estimate, coverage + (1 - coverage)/2)
   }
-  colnames(error_frame)[3:5] = paste0(c("lower","upper"),coverage)
+  colnames(error_frame)[c(3,5)] = paste0(c("lower","upper"),coverage)
   
   
   ##### return
