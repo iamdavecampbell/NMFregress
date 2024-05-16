@@ -456,7 +456,6 @@ boot_reg = function(output, samples,
                     topics = NULL,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
-                    link.phi = "log", type = "ML",
                     theta_transformation = NULL){
   
   ##### check input types/whether covariates are specified
@@ -517,10 +516,10 @@ boot_reg = function(output, samples,
     j = j + 1
     
     ##### create a new nmf_output object but with bootstrapped theta and covariate
-    boot_output = output
-    boot_output$theta = boot_theta
+    boot_output            = output
+    boot_output$theta      = boot_theta
     boot_output$covariates = boot_covariates
-    
+    boot_output$anchors    = topics
     ##### call get_regression_coefs and append list element
     boot_coefs = get_regression_coefs(boot_output, 
                                       obs_weights = obs_weights, 
@@ -671,10 +670,11 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
-      boot_output = output
-      boot_output$theta = boot_theta
+      boot_output            = output
+      boot_output$theta      = boot_theta
       boot_output$covariates = boot_covariates
-
+      boot_output$anchors    = topics
+      
       boot_coefs = get_regression_coefs(boot_output,
                                         obs_weights = obs_weights, 
                                         Model = Model, 
@@ -726,10 +726,10 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
-      boot_output = output
-      boot_output$theta = boot_theta
+      boot_output            = output
+      boot_output$theta      = boot_theta
       boot_output$covariates = boot_covariates
-      
+      boot_output$anchors    = topics
       return(get_regression_coefs(boot_output,
                                   obs_weights = obs_weights, 
                                   Model = Model, 
