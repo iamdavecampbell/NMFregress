@@ -20,7 +20,7 @@ require(mgcv)
 #' 
 #' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively
 #' 
-#' @param theta_transformation transformation of theta matrix, currently only NULL or 'log-log' are allowed.  This will apply the "log(-log(theta))" transformation before regression
+#' @param theta_transformation transformation of theta matrix, currently only NULL or 'log' are allowed.  This will apply the "log(theta)" transformation before regression
 #' 
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
@@ -94,6 +94,16 @@ get_regression_coefs = function(output, obs_weights = NULL,
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
+
+  if(!is.null(theta_transformation)){
+    if(theta_transformation == "log"){
+      print("This is a work in progress")
+      print("log(.) expands the values to the real line")
+      print("but maps 0 --> infinity")
+      print("So we're adding 1 to all counts...")
+      theta_nonzero = log(theta+1)
+    }else{warning("un-recognized theta_transformation; skipping it.")}
+  }
   if(min(theta)==0 & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
     # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
@@ -103,12 +113,6 @@ get_regression_coefs = function(output, obs_weights = NULL,
     
   }else{
     theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
-  }
-  if(!is.null(theta_transformation)){
-    if(theta_transformation == "log-log"){
-      # expands the [0-1] scaled values to the real line
-      theta_nonzero = log(-log(theta_nonzero))
-    }else{warning("un-recognized theta_transformation; skipping it.")}
   }
   if(is.null(obs_weights)){
     
@@ -443,7 +447,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #' @export
 boot_reg = function(output, samples, 
                     obs_weights = NULL, 
-                    Model = "BETA", 
+                    Model = c("BETA", "GAM", "OLS"), 
                     return_just_coefs = TRUE,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
