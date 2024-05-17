@@ -112,7 +112,8 @@ solve_nmf = function(input, user_anchors = NULL){
                    lambdas = lambdas,
                    vocab = input$vocab[c(anchor_rows, non_anchor_rows)], 
                    topics = input$topics, 
-                   covariates = input$covariate)
+                   covariates = input$covariate,
+                   total_words = input$total_words)
   class(to_return) = "nmf_output"
   cat("Complete -- outputting object of class nmf_output.\n")
   return(to_return)

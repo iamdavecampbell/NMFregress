@@ -73,9 +73,11 @@ create_input = function(tdm, vocab, topics, project = FALSE, proj_dim = NULL, co
     stop("Vocab must be the same length as the number of rows in the TDM.")
   }
   
+  total_words = apply(tdm, 2,sum )
+  
   ##### return object of class nmf_input 
-  to_return = list(tdm, vocab, topics, project, proj_dim, covariates)
-  names(to_return) = c("tdm", "vocab", "topics", "project", "proj_dim", "covariates")
+  to_return = list(tdm, vocab, topics, project, proj_dim, covariates,total_words)
+  names(to_return) = c("tdm", "vocab", "topics", "project", "proj_dim", "covariates", "total_words")
   class(to_return) = "nmf_input"
   return(to_return)
   

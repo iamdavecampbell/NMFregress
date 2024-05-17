@@ -39,7 +39,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
                                 formula = NULL,
                                 link = "logit",
                                 link.phi = "log", type = "ML",
-                                theta_transformation = NULL){
+                                theta_transformation = NULL,
+                                topics = NULL){
   ##### Check input types/whether they include covariates
   if(class(output) != "nmf_output"){
     stop("Output must be of class nmf_output.")
@@ -58,10 +59,19 @@ get_regression_coefs = function(output, obs_weights = NULL,
       stop("Document weights and documents have differing lengths.")
     }
   }
+  if(is.null(topics)){
+    topics = output$anchors
+  }
   if(length(Model)==3){Model = "BETA"}
   ##### set up matrices for regression/return value
   theta = t(output$theta)
   covariates = output$covariates
+  
+  if(ncol(theta)== length(output$anchors)){
+print("still in progress")
+        # theta = output$theta[which(output$anchors%in% topics),]
+  }
+
   
   # handle spaces and odd characters in column names
   colnames(covariates) =  make.names(colnames(covariates))
@@ -87,11 +97,13 @@ get_regression_coefs = function(output, obs_weights = NULL,
             )
       )
   }  
-  
-  ##### simple function to normalize rows of theta
-  normalize = function(x){
-    return(x/sum(x))
+  total_words = output$total_words
+  normalize = function(x,total_words){
+    return( diag( 1/total_words ) %*% x)
   }
+  
+  
+  
   
   ##### set up a data frame for regression
   ##### fit a linear model on all topics using specified covariates
@@ -105,15 +117,18 @@ get_regression_coefs = function(output, obs_weights = NULL,
       theta_nonzero = log(theta+1)
     }else{warning("un-recognized theta_transformation; skipping it.")}
   }
-  if(min(theta)==0 & Model %in% c("BETA", "GAM")){
+  if( (min(theta)==0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
     # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
-    theta_nonzero = apply(theta, MARGIN = 2, function(x){normalize(x+min(10,min(x[x>0]/10)))})
+    theta_nonzero = normalize(theta+min(1/ncol(theta) ,min(theta[theta>0]/10)), 
+                              total_words = 
+                                apply(theta+min(1/ncol(theta) ,min(theta[theta>0]/10)),1,sum)
+                              )
     warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.",
                   "Minimum is now ", min(theta_nonzero)))
     
   }else{
-    theta_nonzero = apply(theta, MARGIN = 2, FUN = normalize)
+    theta_nonzero = normalize(theta, total_words = total_words)
   }
   if(is.null(obs_weights)){
     
@@ -456,6 +471,8 @@ boot_reg = function(output, samples,
                     topics = NULL,
                     formulas = TRUE, formula = NULL,
                     link = "logit",
+                    link.phi = "log",
+                    type = "ML",
                     theta_transformation = NULL){
   
   ##### check input types/whether covariates are specified
@@ -478,6 +495,7 @@ boot_reg = function(output, samples,
   theta = output$theta[which(output$anchors%in% topics),]
   covariates = output$covariates
   to_return = list()
+  total_words = output$total_words
   
   ##### use a while loop; this is because bootstrap sample may not include all factor levels
   ##### throw out these samples
@@ -520,6 +538,7 @@ boot_reg = function(output, samples,
     boot_output$theta      = boot_theta
     boot_output$covariates = boot_covariates
     boot_output$anchors    = topics
+    boot_output$total_words= total_words
     ##### call get_regression_coefs and append list element
     boot_coefs = get_regression_coefs(boot_output, 
                                       obs_weights = obs_weights, 
@@ -529,7 +548,8 @@ boot_reg = function(output, samples,
                                       link = link,
                                       link.phi = link.phi, 
                                       type = type, 
-                                      theta_transformation = theta_transformation)
+                                      theta_transformation = theta_transformation,
+                                      topics = topics)
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
@@ -619,9 +639,11 @@ boot_reg_stratified = function(output, samples, parallel = 4,
     stop("parallel must be a positive integer.")
   }
   ##### simple function to normalize rows of theta
-  normalize = function(x){
-    return(x/sum(x))
-  }
+  # ALREADY HANDLED WITHIN GET_REGRESSION_COEFS
+  # normalize = function(x,total_words){
+  #   return(x %*% diag( (1/total_words) ))
+  # }
+  
   ##### set up matrices for regression/list for return value
   if(is.null(topics)){
     topics = output$anchors
@@ -630,6 +652,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
   theta = output$theta[which(output$anchors%in% topics),]
     covariates = output$covariates
   to_return = list()
+  total_words = output$total_words
+  
   
   # this is written so that the constraint is automatically pushed through if it exists
     constraint_block = tail(covariates, nrow(covariates) - ncol(theta))
@@ -667,14 +691,15 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       
       ##### set up a data frame for regression
       ##### fit a linear model on all topics using specified covariates
-      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      # boot_theta = normalize(boot_theta, total_words=total_words)
+      # ALREADY HANDLED INSIDE GET REGRESSION COEFS
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
       boot_output            = output
       boot_output$theta      = boot_theta
       boot_output$covariates = boot_covariates
       boot_output$anchors    = topics
-      
+      boot_output$total_words=total_words
       boot_coefs = get_regression_coefs(boot_output,
                                         obs_weights = obs_weights, 
                                         Model = Model, 
@@ -723,13 +748,15 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       
       ##### set up a data frame for regression
       ##### fit a linear model on all topics using specified covariates
-      boot_theta = apply(boot_theta, FUN = normalize, MARGIN = 2)
+      # boot_theta = normalize(boot_theta, total_words = total_words)
+      # ALREADY HANDLED INSIDE GET REGRESSION COEFS
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
       boot_output            = output
       boot_output$theta      = boot_theta
       boot_output$covariates = boot_covariates
       boot_output$anchors    = topics
+      boot_output$total_words= total_words
       return(get_regression_coefs(boot_output,
                                   obs_weights = obs_weights, 
                                   Model = Model, 

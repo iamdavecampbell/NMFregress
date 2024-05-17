@@ -76,6 +76,7 @@ head(words, n = 25)
 That's it! Now simply run 
 
 ```{r}
+
 my_input = create_input(tdm, vocab = words, covariates = acts_dummy, topics = 25)
 ```
 
@@ -129,6 +130,7 @@ What we get is the bootstrap samples for the regression model of $text_i = \beta
 Let's extract and plot the effect sizes for the regression coefficients for the topics of **love** and **night**.
 Note that we ran a model where act 1 was the baseline, so if all other effects are positive or negative relative to the baseline.  I am rounding the error bars, for viewing convenience. 
 
+
 ```{r}
 boot_plot(OLS_bootstrap, "juliet")
 boot_plot(OLS_bootstrap, "dead")
@@ -151,6 +153,13 @@ First we swap out the covariates from the setup so that we run the model of inte
 
 ```{r, message = FALSE}
 my_output$covariates = acts_numeric
+# just the model without bootstrap
+beta_asymptotic = get_regression_coefs(my_output, 
+                           Model = "BETA", 
+                           return_just_coefs = FALSE,
+                           topics = c("night","love","juliet", "death", "dead"))
+
+# to do full bootstrap:
 beta_asymptotic = boot_reg(my_output, 
                            samples = 1, Model = "BETA", 
                            return_just_coefs = FALSE,
@@ -162,22 +171,26 @@ Model output a list of length = the number of samples.  Since we have **samples 
 
 
 ```{r}
-beta_asymptotic[[1]]$dead|> summary()
+beta_asymptotic[[1]]$death|> summary()
 ```
 
-acts_numeric
+## 6. Inference III.  Generalized Additive Model with Beta Regression
 
 
 ```{r}
-run_sk(my_output, tolerance = 1e-5, maxiter = 100)
-``` 
 
-Those last two arguments just control convergence, and make sure the algorithm doesn't run forever. It's nice to sort it, such as with 
+my_output$covariates = matrix(acts_numeric[,2],ncol = 1)
+beta_gam = boot_reg(my_output, samples= 1, 
+                    Model =  "GAM", 
+                    return_just_coefs = TRUE,
+                    topics = c("night","love","juliet", "death", "dead")
+         )
+  
 
-```{r}
-rj_mat = run_sk(my_output)
-sort(rj_mat[,"five"], decreasing = TRUE)
-``` 
+```
+
+
+## Finally
 
 So `juliet`, `death`, and `dead` are highly associated with act V. Go figure. 
 
