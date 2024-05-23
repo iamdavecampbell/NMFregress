@@ -38,7 +38,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
                                 return_just_coefs = TRUE, 
                                 formula = NULL,
                                 link = "logit",
-                                link.phi = "log", type = "ML",
+                                link.phi = "log", 
+                                type = "ML",
                                 theta_transformation = NULL,
                                 topics = NULL,
                                 na.rm = TRUE){
@@ -111,7 +112,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
   }  
 
   #  Normalization of theta by it's row sums
-  denominator = output$sum_theta_over_docs
+  denominator = sum_theta_over_docs
   normalize = function(x,denominator){
      return( diag( 1/denominator ) %*% x)
    }
@@ -133,13 +134,14 @@ get_regression_coefs = function(output, obs_weights = NULL,
   }
   if( (min(theta)==0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
-    # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 10.
-    theta_nonzero = normalize(theta+min(1/ncol(theta) ,min(theta[theta>0]/10)), 
+    # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 1000.
+    theta_nonzero = normalize(theta+min(1/ncol(theta) ,min(theta[theta>0]/1000)), 
                               denominator = denominator +
-                                min(1/ncol(theta) ,min(theta[theta>0]/10))
+                                2*min(1/ncol(theta) ,min(theta[theta>0]/1000))
                               )
-    warning(paste("beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.",
-                  "Minimum is now ", min(theta_nonzero)))
+    warning(paste(" beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.\n",
+                  " Minimum is now ", round(min(theta_nonzero),7),
+                  " Maximum is now ", round(max(theta_nonzero),7)))
     
   }else{
     theta_nonzero = normalize(theta, denominator = denominator)
@@ -150,10 +152,10 @@ get_regression_coefs = function(output, obs_weights = NULL,
       if(return_just_coefs){
         beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
         beta = t(beta)
-        rownames(beta) = output$anchors 
+        rownames(beta) = topics 
       }else{# return the model output
         beta = stats::lm.fit(x = covariates, y = theta_nonzero)
-        colnames(beta$coefficients) = output$anchors 
+        colnames(beta$coefficients) = topics 
       }#end of using bootstrap T/F
     }else{
       if(Model == "BETA"){# use a Beta regression model
@@ -161,13 +163,24 @@ get_regression_coefs = function(output, obs_weights = NULL,
           beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*ncol(covariates))
           colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)))
-          rownames(beta) = output$anchors 
+          rownames(beta) = topics 
           for(thetaindex in 1:ncol(theta_nonzero)){
              fail = 1
-             while(fail!=0){
+             while(fail!=0 & fail < 10){
                 tryCatch({
-                    data = data.frame(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex]/10),covariates)
-                        colnames(data)  = c("y",colnames(covariates))
+                   if(fail == 1){
+                     data =  data.frame(theta_nonzero[,thetaindex]
+                                        ,covariates)
+                   }else{
+                     # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                    data =  data.frame(
+                      normalize(theta[,thetaindex] +     
+                                  (fail-1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000)), 
+                                denominator = denominator +
+                                          (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                      ),covariates)
+                   }
+                    colnames(data)  = c("y",colnames(covariates))
                     beta[thetaindex,] <-
                               betareg::betareg(formula, data = data,
                                            link = link,
@@ -183,15 +196,25 @@ get_regression_coefs = function(output, obs_weights = NULL,
                 )
               }# end while
           }
-        names(beta) = output$anchors
+        
       }else{# return the betareg model output and not just the coefficients
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
           while(fail!=0){
             tryCatch({
-                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                             covariates)|> as_data_frame()
+              if(fail == 1){
+                data =  data.frame(theta_nonzero[,thetaindex]
+                                   ,covariates)
+              }else{
+                # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                data =  data.frame(
+                  normalize(theta[,thetaindex] +     
+                              (fail-1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000)), 
+                            denominator = denominator +
+                              (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                  ),covariates)
+              }
                 colnames(data)  = c("y",colnames(covariates))
                 beta[[thetaindex]] <-
                   betareg::betareg(formula, data = data,
@@ -207,7 +230,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
           )
           }# end while
         }
-        names(beta) = output$anchors
+        
       }#end of return_just_coefs or the full model output (typically if not using bootstrap)
       }else{# Model == GAM
         if(return_just_coefs){
@@ -230,13 +253,23 @@ get_regression_coefs = function(output, obs_weights = NULL,
                                    1,
                                    function(x){paste0("X.",x, collapse=".")})
           }
-          rownames(beta) = output$anchors 
+          rownames(beta) = topics 
           for(thetaindex in 1:ncol(theta_nonzero)){
             fail = 1
             while(fail!=0){
               tryCatch({  
-                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                             covariates)|> as.data.frame()
+                if(fail == 1){
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
+                }else{
+                  # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +     
+                                (fail-1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000)), 
+                              denominator = denominator +
+                                (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                    ),covariates)
+                }
                 colnames(data)  = c("y",colnames(covariates))
                 beta[thetaindex,] <- mgcv::gam(formula,
                                                 family=mgcv::betar(link=link),
@@ -258,8 +291,18 @@ get_regression_coefs = function(output, obs_weights = NULL,
             fail = 1
             while(fail!=0){
               tryCatch({
-                data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                                   covariates)|> as.data.frame()
+                if(fail == 1){
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
+                }else{
+                  # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +     
+                                (fail-1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000)), 
+                              denominator = denominator +
+                                (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                    ),covariates)
+                }
                 colnames(data)  = c("y",colnames(covariates))
                 beta[[thetaindex]] <- mgcv::gam(formula,
                                                     family=mgcv::betar(link=link),
@@ -274,7 +317,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
             )
           }# end while
         }# end forloop
-        names(beta) = output$anchors
+        
         # end of GAM with returning the whole model.
     }
       }# end of GAM
@@ -285,10 +328,10 @@ get_regression_coefs = function(output, obs_weights = NULL,
       if(return_just_coefs){
         beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights))
         beta = t(beta)
-        rownames(beta) = output$anchors 
+        rownames(beta) = topics 
       }else{# return the lm model output
         beta = stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights)
-        colnames(beta$coefficients) = output$anchors 
+        colnames(beta$coefficients) = topics 
       }
         
     }else{
@@ -301,7 +344,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = 2*length(covariates))
         colnames(beta) = c(paste0("mean.", colnames(covariates)),
                            paste0("precision.", colnames(covariates)))
-        rownames(beta) = output$anchors
+        rownames(beta) = topics
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 0
           while(fail==0){
@@ -336,8 +379,17 @@ get_regression_coefs = function(output, obs_weights = NULL,
           while(fail==0){
             fail = 1
             tryCatch({
-              data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
-                           covariates)|> as_data_frame()
+              if(fail == 1){
+                     data =  data.frame(theta_nonzero[,thetaindex]
+                                        ,covariates)
+                   }else{
+                     # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                    data =  data.frame(
+                      normalize(theta[,thetaindex] +     (fail-1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000)), 
+                                denominator = denominator +
+                                          (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                      ),covariates)
+                   }
               colnames(data)  = c("y",colnames(covariates))
               cat(paste0("working on ", thetaindex))
               beta[thetaindex] = 
@@ -359,10 +411,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
             }
             )  
           }
-          
         }
-        names(beta) = output$anchors 
-        
         # return the whole regression model
       }
     }else{# Model == GAM
@@ -386,7 +435,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
                                  1,
                                  function(x){paste0("X.",x, collapse=".")})
         }
-        rownames(beta) = output$anchors 
+        rownames(beta) = topics 
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
           while(fail!=0){
@@ -432,7 +481,6 @@ get_regression_coefs = function(output, obs_weights = NULL,
             )
           }# end while
         }# end forloop
-        names(beta) = output$anchors
         # end of GAM with returning the whole model.
       }
     }# end of GAM
