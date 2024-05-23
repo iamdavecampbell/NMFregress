@@ -74,7 +74,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
                                               !is.infinite(1/output$sum_theta_over_docs))])
     covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
                                                    !is.infinite(1/output$sum_theta_over_docs)),
-    ]
+    ] |> as.data.frame()
+    colnames(covariates) = colnames(output$covariates)
     sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
                                                              !is.infinite(1/output$sum_theta_over_docs))
     ]
@@ -150,7 +151,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
     
     if(Model == "OLS"){
       if(return_just_coefs){
-        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero))
+        beta = stats::coef(stats::lm.fit(x = as.matrix(covariates), y = theta_nonzero))
         beta = t(beta)
         rownames(beta) = topics 
       }else{# return the model output
@@ -191,7 +192,8 @@ get_regression_coefs = function(output, obs_weights = NULL,
                    },# end trycatch expression
                    error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
                    finally= {# completed
-                     cat(paste("\n Completed topic", thetaindex))
+                     # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+                     # cat(paste("\n Completed topic", thetaindex))
                    }
                 )
               }# end while
@@ -201,7 +203,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
-          while(fail!=0){
+          while(fail!=0 & fail < 10){
             tryCatch({
               if(fail == 1){
                 data =  data.frame(theta_nonzero[,thetaindex]
@@ -225,10 +227,12 @@ get_regression_coefs = function(output, obs_weights = NULL,
             },# end trycatch expression
             error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
             finally= {# completed
-              cat(paste("\n Completed topic", thetaindex))
+              # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+              # cat(paste("\n Completed topic", thetaindex))
             }
           )
           }# end while
+          names(beta)[thetaindex] = topics[thetaindex]
         }
         
       }#end of return_just_coefs or the full model output (typically if not using bootstrap)
@@ -256,7 +260,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
           rownames(beta) = topics 
           for(thetaindex in 1:ncol(theta_nonzero)){
             fail = 1
-            while(fail!=0){
+            while(fail!=0 & fail < 10){
               tryCatch({  
                 if(fail == 1){
                   data =  data.frame(theta_nonzero[,thetaindex]
@@ -280,16 +284,20 @@ get_regression_coefs = function(output, obs_weights = NULL,
               # if fails, then push fail back up to 1 from zero
               error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
               finally= {# completed
-                cat(paste("\n Completed topic", thetaindex))
+                # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
               }
             )
           }#end while
         }# end for loop
+          if(ncol_X==1){
+            beta = rbind(beta,X_pred_vals = c(as.matrix(pred_X_vals)))
+          }
         }else{#return the whole model
           beta = list()
           for(thetaindex in 1:ncol(theta_nonzero)){
             fail = 1
-            while(fail!=0){
+            while(fail!=0 & fail < 10){
               tryCatch({
                 if(fail == 1){
                   data =  data.frame(theta_nonzero[,thetaindex]
@@ -312,10 +320,12 @@ get_regression_coefs = function(output, obs_weights = NULL,
               # if fails, then push fail back up to 1 from zero
               error = function(e){fail <<-fail+1; cat(fail); cat(" It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
               finally= {# completed
-                    cat(paste("\n Completed topic", thetaindex))
+                # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+                    # cat(paste("\n Completed topic", thetaindex))
               }
             )
           }# end while
+            names(beta)[thetaindex] = topics[thetaindex]
         }# end forloop
         
         # end of GAM with returning the whole model.
@@ -326,7 +336,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
     }else{ # with weights
     if(Model == "OLS"){
       if(return_just_coefs){
-        beta = stats::coef(stats::lm.fit(x = covariates, y = theta_nonzero, weights = obs_weights))
+        beta = stats::coef(stats::lm.fit(x = as.matrix(covariates), y = theta_nonzero, weights = obs_weights))
         beta = t(beta)
         rownames(beta) = topics 
       }else{# return the lm model output
@@ -347,7 +357,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         rownames(beta) = topics
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 0
-          while(fail==0){
+          while(fail!=0 & fail < 10){
             fail = 1
             tryCatch({
             cat(paste0("working on ", thetaindex))
@@ -376,7 +386,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 0
-          while(fail==0){
+          while(fail!=0 & fail < 10){
             fail = 1
             tryCatch({
               if(fail == 1){
@@ -411,6 +421,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
             }
             )  
           }
+          names(beta)[thetaindex] = topics[thetaindex]
         }
         # return the whole regression model
       }
@@ -438,7 +449,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
         rownames(beta) = topics 
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
-          while(fail!=0){
+          while(fail!=0 & fail < 10){
             tryCatch({  
               data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                            covariates)|> as.data.frame()
@@ -453,16 +464,20 @@ get_regression_coefs = function(output, obs_weights = NULL,
             # if fails, then push fail back up to 1 from zero
             error = function(e){fail <<-fail+1; cat(fail); cat("\n It'll be ok... Sometimes beta-type regressions fail because the smallest value is too close to zero.  Let's increase the smallest value and try again. \n ")},
             finally= {# completed
-              cat(paste("\n Completed topic", thetaindex))
+              # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+              # cat(paste("\n Completed topic", thetaindex))
             }
             )
           }#end while
         }# end for loop
+        if(ncol_X==1){
+          beta = rbind(beta,X_pred_vals = c(as.matrix(pred_X_vals)))
+        }
       }else{#return the whole model
         beta = list()
         for(thetaindex in 1:ncol(theta_nonzero)){
           fail = 1
-          while(fail!=0){
+          while(fail!=0 & fail < 10){
             tryCatch({
               data = cbind(theta_nonzero[,thetaindex]+(fail-1)*min(theta_nonzero[,thetaindex])*.5,
                            covariates)|> as.data.frame()
@@ -480,6 +495,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
             }
             )
           }# end while
+          names(beta)[thetaindex] = topics[thetaindex]
         }# end forloop
         # end of GAM with returning the whole model.
       }
@@ -531,7 +547,8 @@ boot_reg = function(output, samples,
                     Model = c("BETA", "GAM", "OLS"), 
                     return_just_coefs = TRUE,
                     topics = NULL,
-                    formulas = TRUE, formula = NULL,
+                    formulas = TRUE, 
+                    formula = NULL,
                     link = "logit",
                     link.phi = "log",
                     type = "ML",
@@ -563,7 +580,8 @@ boot_reg = function(output, samples,
                                               !is.infinite(1/output$sum_theta_over_docs))]
     covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
                                                    !is.infinite(1/output$sum_theta_over_docs)),
-    ]
+    ] |> as.data.frame()
+    colnames(covariates) = colnames(output$covariates)
     sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
                                                              !is.infinite(1/output$sum_theta_over_docs))
     ]
@@ -600,7 +618,8 @@ boot_reg = function(output, samples,
     zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
     boot_theta = cbind(boot_theta, zero_block)
     
-    boot_covariates = covariate_block[boot_docs,]
+    boot_covariates = covariate_block[boot_docs,]|> as.data.frame()
+    colnames(boot_covariates) = colnames(covariate_block)
     boot_covariates = rbind(boot_covariates, constraint_block)
     
     ##### check if all factor levels are used for appropriate variables
@@ -618,7 +637,7 @@ boot_reg = function(output, samples,
     boot_output$anchors             = topics
     boot_output$sum_theta_over_docs = sum_theta_over_docs[boot_docs]
     ##### call get_regression_coefs and append list element
-    boot_coefs = get_regression_coefs(boot_output, 
+    boot_coefs = get_regression_coefs(output = boot_output, 
                                       obs_weights = obs_weights, 
                                       Model = Model, 
                                       return_just_coefs = return_just_coefs, 
@@ -632,7 +651,7 @@ boot_reg = function(output, samples,
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
-    if(i %% 10 == 0){
+    if(i %% 50 == 0){
       cat(i, " of ", samples, " bootstrap samples complete.\n")
     }
     
@@ -733,7 +752,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                                              !is.infinite(1/output$sum_theta_over_docs))]
     covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
                                                  !is.infinite(1/output$sum_theta_over_docs)),
-    ]
+    ] |> as.data.frame()
+    colnames(covariates) = colnames(output$covariates)
     sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
                                                              !is.infinite(1/output$sum_theta_over_docs))
                                                      ]
@@ -779,7 +799,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       boot_theta = theta[,boot_docs]
       # put the constraint back if it exists:
       boot_theta = cbind(boot_theta, zero_block)
-      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = covariate_block[boot_docs,]|> as.data.frame()
+      colnames(boot_covariates) = colnames(covariate_block)
       boot_covariates = rbind(boot_covariates, constraint_block)
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
@@ -799,7 +820,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       to_return[[i]] = boot_coefs
       
       ##### progress of iterations
-      if(i %% 10 == 0){
+      if(i %% 50 == 0){
         cat(i, " of ", samples, " bootstrap samples complete.\n")
       }
    }
@@ -831,7 +852,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       boot_theta = theta[,boot_docs]
       # put the constraint back if it exists:
       boot_theta = cbind(boot_theta, zero_block)
-      boot_covariates = covariate_block[boot_docs,]
+      boot_covariates = covariate_block[boot_docs,]|> as.data.frame()
+      colnames(boot_covariates) = colnames(covariate_block)
       boot_covariates = rbind(boot_covariates, constraint_block)
       
       ##### create a new nmf_output object but with bootstrapped theta and covariate
