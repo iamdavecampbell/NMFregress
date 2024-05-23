@@ -35,7 +35,7 @@ solve_nmf = function(input, user_anchors = NULL){
   
   ##### simple function to get norm of vector
   #get_norm = function(x){                       ############ Replaced by sum (l1 normalization)
-  #  return(sqrt(sum(x^2)))                      ############ More interpretable (probabilities)
+  #  return(sqrt(sum(x^2)))                      ############ More interpratable (probabilities)
   #}
   
   ##### find anchors w/ qr decomposition (using Gaussian random projection if specified)
@@ -107,13 +107,15 @@ solve_nmf = function(input, user_anchors = NULL){
   theta = theta[anchor_order,]
   
   ##### return object of class nmf_output
-  to_return = list(phi = phi, theta = theta, anchors = anchors[anchor_order], 
-                   extract_order_anchors = anchors,
+  to_return = list(phi = phi, 
+                   theta = theta, 
+                   anchors = anchors[anchor_order], 
+                   extract_order_anchors = extract_order_anchors,
                    lambdas = lambdas,
                    vocab = input$vocab[c(anchor_rows, non_anchor_rows)], 
                    topics = input$topics, 
                    covariates = input$covariate,
-                   total_words = input$total_words)
+                   sum_theta_over_docs =  apply(theta,2,sum))
   class(to_return) = "nmf_output"
   cat("Complete -- outputting object of class nmf_output.\n")
   return(to_return)
