@@ -65,22 +65,24 @@ get_regression_coefs = function(output, obs_weights = NULL,
   }
   if(length(Model)==3){Model = "BETA"}
   ##### set up matrices for regression/return value
+  # select the rows corresponding to topics selected:
   if(na.rm){
-  #remove the problematic 'no topic' documents.
-        theta = t(output$theta[,
-                               which(!is.na(1/output$sum_theta_over_docs) & 
-                                     !is.infinite(1/output$sum_theta_over_docs))
-                        ])
+    #remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+    theta              = t(output$theta[which(output$anchors%in% topics),
+                                      which(!is.na(1/output$sum_theta_over_docs) & 
+                                              !is.infinite(1/output$sum_theta_over_docs))])
+    covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                   !is.infinite(1/output$sum_theta_over_docs)),
+    ]
+    sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                             !is.infinite(1/output$sum_theta_over_docs))
+    ]
   }else{
     # keep all docs.
-    theta = t(output$theta)
-  }
-  covariates = output$covariates
-  
-  if(ncol(theta)== length(output$anchors)){
-print("still in progress")
-        # theta = output$theta[which(output$anchors%in% topics),]
-  }
+    theta               = t(output$theta)
+    covariates          = output$covariates
+    sum_theta_over_docs = output$sum_theta_over_docs
+  }  
 
   
   # handle spaces and odd characters in column names
@@ -485,7 +487,8 @@ boot_reg = function(output, samples,
                     link = "logit",
                     link.phi = "log",
                     type = "ML",
-                    theta_transformation = NULL){
+                    theta_transformation = NULL,
+                    na.rm = TRUE){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -503,11 +506,26 @@ boot_reg = function(output, samples,
   if(is.null(topics)){
     topics = output$anchors
   }
+  ##### set up matrices for regression/return value
   # select the rows corresponding to topics selected:
-  theta = output$theta[which(output$anchors%in% topics),]
-  covariates = output$covariates
+  if(na.rm){
+    #remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+    theta              = output$theta[which(output$anchors%in% topics),
+                                      which(!is.na(1/output$sum_theta_over_docs) & 
+                                              !is.infinite(1/output$sum_theta_over_docs))]
+    covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                   !is.infinite(1/output$sum_theta_over_docs)),
+    ]
+    sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                             !is.infinite(1/output$sum_theta_over_docs))
+    ]
+  }else{
+    # keep all docs.
+    theta               = output$theta
+    covariates          = output$covariates
+    sum_theta_over_docs = output$sum_theta_over_docs
+  }
   to_return = list()
-  total_words = output$total_words
   
   ##### use a while loop; this is because bootstrap sample may not include all factor levels
   ##### throw out these samples
@@ -550,7 +568,7 @@ boot_reg = function(output, samples,
     boot_output$theta               = boot_theta
     boot_output$covariates          = boot_covariates
     boot_output$anchors             = topics
-    boot_output$sum_theta_over_docs = output$sum_theta_over_docs[boot_docs]
+    boot_output$sum_theta_over_docs = sum_theta_over_docs[boot_docs]
     ##### call get_regression_coefs and append list element
     boot_coefs = get_regression_coefs(boot_output, 
                                       obs_weights = obs_weights, 
@@ -561,7 +579,8 @@ boot_reg = function(output, samples,
                                       link.phi = link.phi, 
                                       type = type, 
                                       theta_transformation = theta_transformation,
-                                      topics = topics)
+                                      topics = topics,
+                                      na.rm = na.rm)
     to_return[[j]] = boot_coefs
     
     ##### progress of iterations
@@ -633,7 +652,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                                formula = NULL,
                                link = "logit",
                                link.phi = "log", 
-                               type = "ML"){
+                               type = "ML",
+                               na.rm = TRUE){
   
   ##### check input types/whether covariates are specified
   if(class(output) != "nmf_output"){
@@ -655,11 +675,29 @@ boot_reg_stratified = function(output, samples, parallel = 4,
   if(is.null(topics)){
     topics = output$anchors
   }
+  
+  ##### set up matrices for regression/return value
   # select the rows corresponding to topics selected:
-  theta = output$theta[which(output$anchors%in% topics),]
-    covariates = output$covariates
+  if(na.rm){
+    #remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+    theta              = output$theta[which(output$anchors%in% topics),
+                                       which(!is.na(1/output$sum_theta_over_docs) & 
+                                             !is.infinite(1/output$sum_theta_over_docs))]
+    covariates         = output$covariates[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                 !is.infinite(1/output$sum_theta_over_docs)),
+    ]
+    sum_theta_over_docs = output$sum_theta_over_docs[which(!is.na(1/output$sum_theta_over_docs) & 
+                                                             !is.infinite(1/output$sum_theta_over_docs))
+                                                     ]
+      }else{
+    # keep all docs.
+    theta               = output$theta
+    covariates          = output$covariates
+    sum_theta_over_docs = output$sum_theta_over_docs
+  }
+  
+  
   to_return = list()
-  total_words = output$total_words
   
   
   # this is written so that the constraint is automatically pushed through if it exists
@@ -701,7 +739,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       boot_output$theta               = boot_theta
       boot_output$covariates          = boot_covariates
       boot_output$anchors             = topics
-      boot_output$sum_theta_over_docs = output$sum_theta_over_docs[boot_docs]
+      boot_output$sum_theta_over_docs = sum_theta_over_docs[boot_docs]
       boot_coefs = get_regression_coefs(boot_output,
                                         obs_weights = obs_weights, 
                                         Model = Model, 
