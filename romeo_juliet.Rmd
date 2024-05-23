@@ -78,6 +78,7 @@ That's it! Now simply run
 ```{r}
 
 my_input = create_input(tdm, vocab = words, covariates = acts_dummy, topics = 25)
+my_input|> names()
 ```
 
 which creates an object `my_input` of class `nmf_input` (this is basically just a named list); the last argument tells the solver we want 25 topics in our topic model. 
@@ -107,11 +108,18 @@ where `n=10` says we'd like 10 words printed per topic. Topics are labelled by t
 Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distorition. But, for large matrices this is a really nice option; we'd specify something like 
 
 ```{r,  eval = FALSE}
-my_input = create_input(tdm, words, covariates = acts, topics = 25 , project = TRUE, proj_dim = 200)
-my_output = solve_nmf(my_input)
+my_input2 = create_input(tdm, words, covariates = acts_dummy, topics = 25 , project = TRUE, proj_dim = 200)
+my_output2 = solve_nmf(my_input2)
 ```
 
 which tells the solver we'd like to project down to 200 dimensions to find the anchor words and likewise for solving the non-negative least squares problems that constitute convex NMF. It's up to you to get these dimensions right -- that is, ensuring that they are actually smaller than the input dimension (which is the number of columns in the TDM). For some context, we've solved NMF for matrices of size ~ 10,000 x 6,000 in a matter of minutes with very good results. Again, this is down to the data as well -- the more signal your TDM carries, the better these projections will work. 
+
+
+## Normalization
+
+Documents have different lengths and the user may see fit to handle this in one of a variety of ways depending on their goals and the domain of interest.  As with all pre-processing, choices have downstream impacts and results are conditional on these choices.  Normalization is the process of scaling the document decomposition in some way so as to avoid mundane inference that is to be interpreted as covariate X is associated with longer documents.  The preferred normalization method is to normalize the $\theta$ matrix so that the topic weights for a document sum to 1.  Normalizing $\theta$ provides the interpretation as the probability of topics for a document.  The bounded elements of $\theta \in [0,1]$, imply that a beta regression is appropriate.  However since topic allocations depend on the across-topic-sums for a document, the scaling will depend on the number of topics.  Inference for this model targets relative effect sizes conditional on the number of topics.  Topics are nearly orthogonal so typically changing the number of topics has little practical impact
+
+
 
 ## 4. Inferece I. OLS and bootstrap
 
@@ -119,9 +127,10 @@ The interpretation of performing regression on something akin to a probabilistic
 
  Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run:
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning=FALSE, results = FALSE }
 OLS_bootstrap = boot_reg(my_output, samples = 1000, Model = "OLS")
 
+# Test the input of a subset of topics
 ```
 A formula could be specified.  By default a formula is derived from all the columns of the covariate matrix.  Note that an intercept must be provided  as a column of the covariate matrix if you go this default route.
 
@@ -151,8 +160,9 @@ Note that Beta regression is much slower than OLS.  We could still use bootstrap
 First we swap out the covariates from the setup so that we run the model of interest. Then we select the topics of interest.  Here we will use:
 \{"night","love","juliet", "death", "dead"\}.
 
-```{r, message = FALSE}
-my_output$covariates = acts_numeric
+```{r, message = FALSE, warning=FALSE, results = FALSE}
+# my_output$covariates = acts_numeric
+my_output$covariates = acts_dummy
 # just the model without bootstrap
 beta_asymptotic = get_regression_coefs(my_output, 
                            Model = "BETA", 
@@ -160,28 +170,39 @@ beta_asymptotic = get_regression_coefs(my_output,
                            topics = c("night","love","juliet", "death", "dead"))
 
 # to do full bootstrap:
-beta_asymptotic = boot_reg(my_output, 
-                           samples = 1, Model = "BETA", 
-                           return_just_coefs = FALSE,
+beta_boot = boot_reg(my_output, 
+                           samples = 100, Model = "BETA", 
+                           return_just_coefs = TRUE,
                            topics = c("night","love","juliet", "death", "dead"))
 
 
+boot_plot(beta_boot, "juliet")
+boot_plot(beta_boot, "dead")
 ```
 Model output a list of length = the number of samples.  Since we have **samples =1** then we need to extract the model output from the first element of the list.  Then we can call by topic and use the asymptotic results for the beta regression.
 
 
 ```{r}
-beta_asymptotic[[1]]$death|> summary()
+beta_asymptotic$death|> summary()
 ```
 
 ## 6. Inference III.  Generalized Additive Model with Beta Regression
 
 
-```{r}
-
-my_output$covariates = matrix(acts_numeric[,2],ncol = 1)
-beta_gam = boot_reg(my_output, samples= 1, 
+```{r, message = FALSE, warning=FALSE, results = FALSE }
+# Need to fake spread out the covariates so that a GAM might be reasonable
+my_output$covariates = matrix(acts_numeric[,2]+rnorm(n = length(acts_numeric[,2]), mean = 0, sd = 1),ncol = 1)
+colnames(my_output$covariates) = "acts"
+beta_gam = get_regression_coefs(output = my_output, 
                     Model =  "GAM", 
+                    return_just_coefs = FALSE,
+                    topics = c("night","love","juliet", "death", "dead")
+         )
+
+
+beta_gam_boot = boot_reg(output = my_output, 
+                    Model =  "GAM", 
+                    samples = 100,
                     return_just_coefs = TRUE,
                     topics = c("night","love","juliet", "death", "dead")
          )
