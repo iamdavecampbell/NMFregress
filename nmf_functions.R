@@ -41,7 +41,8 @@ solve_nmf = function(input, user_anchors = NULL){
   ##### find anchors w/ qr decomposition (using Gaussian random projection if specified)
   ##### store anchors 
   if(!(is.null(user_anchors))){
-    extract_order_anchors = anchors = sort(user_anchors)
+    extract_order_anchors = user_anchors
+    anchors = sort(user_anchors) 
     cat("Solving nmf.\n")
   }else if(input$project == TRUE){
     proj_mat = matrix(stats::rnorm(input$proj_dim*ncol(input$tdm), 0, 1), nrow = input$proj_dim)
@@ -99,13 +100,15 @@ solve_nmf = function(input, user_anchors = NULL){
 
   ##### solve for diagonal scaling matrix (lambda), phi, and theta 
   Y_with_ones = rbind(diag(length(anchor_rows)), Y) 
+  colnames(Y_with_ones) = input$vocab[anchor_rows]
   lambdas = 1/apply(Y_with_ones, FUN = sum, MARGIN = 2)
   anchor_order = order(lambdas)
   phi = Y_with_ones %*% diag(lambdas)
+  colnames(phi) = colnames(Y_with_ones)
   theta = diag(1/lambdas) %*% anchor_block
   phi = phi[,anchor_order]
   theta = theta[anchor_order,]
-  
+  rownames(theta) = colnames(phi)
   ##### return object of class nmf_output
   to_return = list(phi = phi, 
                    theta = theta, 
