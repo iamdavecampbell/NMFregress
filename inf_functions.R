@@ -887,6 +887,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #'
 #' @param topic The topic to use as the response variable, labeled by its anchor word.
 #'
+#' @param newdata provided if the bootsamples are regression coefficients and we wish to plot the fitted values at 'newdata' points.  newdata should be a data.frame where the N rows are N new observations with values across the columns.  The rownames are used for plotting as appropriate.
+#'
 #' @return A list as produced by ggplot2. Calling this function without assignment to a variable
 #' will send a plot to the plotting window.
 #'
@@ -898,7 +900,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #' boot_plot(boot_samples, "model")
 #'
 #' @export
-boot_plot = function(boot_samples, topic){
+boot_plot = function(boot_samples, topic, newdata=NULL){
   
   ##### check inputs
   if(!(is.list(boot_samples))){
@@ -912,7 +914,33 @@ boot_plot = function(boot_samples, topic){
   if(!(topic %in% row.names(boot_samples[[1]]))){
     stop("Topic not among the anchor words.")
   }
-  
+  if(!is.null(newdata)){
+    fitted_values = lapply(boot_samples, function(x){x%*%t(newdata)})
+    num_topics = dim(fitted_values[[1]])[1]
+    num_covar = dim(fitted_values[[1]])[2]
+    num_samples = length(fitted_values)
+    boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
+    for(i in 1:length(fitted_values)){
+      boot_mat[i,] = fitted_values[[i]][topic,]
+    }
+    boot_effect = as.data.frame(boot_mat)
+    names(boot_effect) = rownames(newdata)
+    
+    ##### melt the data frame so it can be passed to ggplot
+    boot_effect = reshape2::melt(boot_effect)
+    names(boot_effect) = c("newdatapoint", "fitted")
+    
+    ##### create and evaluate plot
+    topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
+      ggridges::stat_density_ridges(fill = "lightblue",geom = "density_ridges")+
+      ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)),
+                    x = expression(beta),
+                    y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
+    eval(topic_plot)
+  }
+    
+    
+  }else{
   ##### create a data frame with covariate effects as columns and bootstrap samples as rows
   num_topics = dim(boot_samples[[1]])[1]
   num_covar = dim(boot_samples[[1]])[2]
@@ -936,7 +964,7 @@ boot_plot = function(boot_samples, topic){
                   x = expression(beta),
                   y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
   eval(topic_plot)
-  
+  }
 }
 #' create_error_bars
 #'
