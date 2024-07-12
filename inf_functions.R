@@ -530,7 +530,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
 #' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
 #' 
-#' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
+#' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
 #' of the associated estimator; see boot_plot() and create_error_bars().
@@ -664,8 +664,19 @@ boot_reg = function(output, samples,
   }
   
   ##### return
-  return(to_return)
-  
+
+  return(list(boot_reg =to_return,
+              obs_weights = obs_weights, 
+              Model = Model, 
+              return_just_coefs = return_just_coefs, 
+              formula = formula,
+              link     = ifelse(Model == "OLS", NA, link),
+              link.phi = ifelse(Model == "OLS", NA, link.phi), 
+              type = ifelse(Model == "BETA",type, NA),  
+              theta_transformation = theta_transformation,
+              topics = topics,
+              na.rm = na.rm)
+      ) 
 }
 
 
@@ -697,7 +708,7 @@ boot_reg = function(output, samples,
 #' 
 #' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
 #'
-#' @return A list containing matrices/vectors, each of which contains regression coefficients produced by
+#' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
 #' of the associated estimator; see boot_plot() and create_error_bars().
@@ -873,7 +884,20 @@ boot_reg_stratified = function(output, samples, parallel = 4,
     }
   }
   ##### return
-  return(to_return)
+  return(list(boot_reg =to_return,
+                  obs_weights = obs_weights, 
+                  Model = Model, 
+                  return_just_coefs = return_just_coefs, 
+                  formula = formula,
+                  link     = ifelse(Model == "OLS", NA, link),
+                  link.phi = ifelse(Model == "OLS", NA, link.phi), 
+                  type = type, 
+                  theta_transformation = theta_transformation,
+                  topics = topics,
+                  na.rm = na.rm)
+        )
+  
+   
 }
 
 
@@ -889,6 +913,10 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #'
 #' @param newdata provided if the bootsamples are regression coefficients and we wish to plot the fitted values at 'newdata' points.  newdata should be a data.frame where the N rows are N new observations with values across the columns.  The rownames are used for plotting as appropriate.
 #'
+#' @param Model Used if 'boot_samples' is not from boot_reg and therefore doesn't contain the model information already.  Used if newdata is supplied so that the function knows how to convert the bootstrap samples into predictions at 'newdata' points.  WILL BE REMOVED IN FUTURE
+#' 
+#' @param link Used if 'boot_samples' is not from boot_reg and therefore doesn't contain the model information already.  Used if newdata is supplied so that the function knows how to convert the bootstrap samples into predictions at 'newdata' points.  WILL BE REMOVED IN FUTURE
+#'
 #' @return A list as produced by ggplot2. Calling this function without assignment to a variable
 #' will send a plot to the plotting window.
 #'
@@ -900,23 +928,45 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #' boot_plot(boot_samples, "model")
 #'
 #' @export
-boot_plot = function(boot_samples, topic, newdata=NULL){
+boot_plot = function(boot_samples, 
+                     topic, 
+                     newdata=NULL, 
+                     Model = NULL, 
+                     link = NULL,
+                     theta_transformation = NULL){
   
   ##### check inputs
+  if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
+    print("will eventually make boot_reg a class to fix this ad hoc handling")
+    # if boot_samples comes from get_regression_coefs 
+    boot_reg_list = boot_samples
+    bootstrapped = FALSE 
+  }else{
+    # if boot_samples comes from boot_reg
+    boot_reg_list = boot_samples$boot_reg
+    Model         = boot_samples$Model
+    link          = boot_samples$link
+    theta_transformation         = boot_samples$theta_transformation
+    bootstrapped = TRUE
+  }
+  
+  
   if(!(is.list(boot_samples))){
     stop("boot_samples must be a list of vectors/matrices, as output by
               boot_reg().")
   }
-  if(!(is.matrix(boot_samples[[1]]))){
+  if(!(is.matrix(boot_reg_list[[1]]))){
     stop("boot_samples must be a list of matrices, as output by
               boot_reg().")
   }
-  if(!(topic %in% row.names(boot_samples[[1]]))){
+  if(!(topic %in% row.names(boot_reg_list[[1]]))){
     stop("Topic not among the anchor words.")
   }
-  if(!is.null(newdata)){
-    fitted_values = lapply(boot_samples, function(x){x%*%t(newdata)})
-    num_topics = dim(fitted_values[[1]])[1]
+  if(!is.null(newdata) &  bootstrapped & Model == "OLS"){
+    # want to plot data fit at "newdata"
+    # OLS model was used
+    # plotting the bootstrap distribution
+    fitted_values = lapply(boot_reg_list, function(x){x%*%t(newdata)})
     num_covar = dim(fitted_values[[1]])[2]
     num_samples = length(fitted_values)
     boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
@@ -932,15 +982,75 @@ boot_plot = function(boot_samples, topic, newdata=NULL){
     
     ##### create and evaluate plot
     topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
-      ggridges::stat_density_ridges(fill = "lightblue",geom = "density_ridges")+
-      ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)),
-                    x = expression(beta),
-                    y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
-    eval(topic_plot)
+      geom_boxplot(fill = "lightblue")+
+      ggplot2::labs(title = paste("Bootstrap distribution for Topic =", stringr::str_to_title(topic)),
+                    x = "Covariate value",
+                    y = "P(topic | new data)")
+
   }
+  if(!is.null(newdata) &  bootstrapped & Model == "BETA"){
+    # want to plot data fit at "newdata"
+    # Beta regression model was used
+    # plotting the bootstrap distribution
+    boot_reg_colnames = boot_reg_list[[1]]|> colnames() 
+    mean_cols         = boot_reg_colnames |> grep(pattern = "mean", value = TRUE)
+    precision_cols    = boot_reg_colnames |> grep(pattern = "mean", value = TRUE, invert = TRUE)
     
+    xBeta         = lapply(boot_reg_list, function(x){x[,mean_cols]%*%t(newdata)})
+    fitted_values = lapply(xBeta, function(xB){exp(xB)/(1-exp(xB))})
+
+    num_covar = dim(fitted_values[[1]])[2]
+    num_samples = length(fitted_values)
+    boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
+    for(i in 1:length(fitted_values)){
+      boot_mat[i,] = fitted_values[[i]][topic,]
+    }
+    boot_effect = as.data.frame(boot_mat)
+    names(boot_effect) = rownames(newdata)
     
-  }else{
+    ##### melt the data frame so it can be passed to ggplot
+    boot_effect = reshape2::melt(boot_effect)
+    names(boot_effect) = c("newdatapoint", "fitted")
+    
+    ##### create and evaluate plot
+    topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
+      geom_boxplot(fill = "lightblue")+
+      ggplot2::labs(title = paste("Bootstrap distribution for Topic =", stringr::str_to_title(topic)),
+                    x = "Covariate value",
+                    y = "P(topic | new data)")
+    
+  }
+  if(!is.null(newdata) & !bootstrapped & Model == "BETA"){
+    # want to plot data fit at "newdata"
+    # Beta regression model was used
+    # plotting the prediction and prediction interval
+    
+    q.025 = predict(boot_reg_list[[topic]], 
+                    newdata = newdata, 
+                    type = "quantile", at = c(.025))
+    q.5   = predict(boot_reg_list[[topic]], 
+                    newdata = newdata, 
+                    type = "quantile", at = c(0.5))
+    q.975 = predict(boot_reg_list[[topic]], 
+                    newdata = newdata, 
+                    type = "quantile", at = c(0.975))
+    fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
+    
+    ##### melt the data frame so it can be passed to ggplot
+    fitted_values = reshape2::melt(fitted_values)
+    names(fitted_values) = c("newdatapoint","quantile", "value")
+    
+    ##### create and evaluate plot
+    topic_plot = ggplot2::ggplot(data = fitted_values, 
+                                 ggplot2::aes(x=newdatapoint, y=value, group = quantile))+
+      geom_line()+
+      ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
+                    x = "Covariate value",
+                    y = "P(topic | new data)")
+    
+  }
+  
+  if(is.null(newdata)){
   ##### create a data frame with covariate effects as columns and bootstrap samples as rows
   num_topics = dim(boot_samples[[1]])[1]
   num_covar = dim(boot_samples[[1]])[2]
@@ -963,8 +1073,11 @@ boot_plot = function(boot_samples, topic, newdata=NULL){
     ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)),
                   x = expression(beta),
                   y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
-  eval(topic_plot)
-  }
+  
+}
+  
+
+eval(topic_plot)
 }
 #' create_error_bars
 #'
