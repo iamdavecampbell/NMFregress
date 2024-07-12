@@ -64,7 +64,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
   if(is.null(topics)){
     topics = output$anchors
   }
-  if(length(Model)==3){Model = "BETA"}
+  # if(length(Model)==3){Model = "BETA"}
   ##### set up matrices for regression/return value
   # select the rows corresponding to topics selected:
   if(na.rm){
@@ -955,10 +955,6 @@ boot_plot = function(boot_samples,
     stop("boot_samples must be a list of vectors/matrices, as output by
               boot_reg().")
   }
-  if(!(is.matrix(boot_reg_list[[1]]))){
-    stop("boot_samples must be a list of matrices, as output by
-              boot_reg().")
-  }
   if(!(topic %in% row.names(boot_reg_list[[1]]))){
     stop("Topic not among the anchor words.")
   }
@@ -975,7 +971,11 @@ boot_plot = function(boot_samples,
     }
     boot_effect = as.data.frame(boot_mat)
     names(boot_effect) = rownames(newdata)
-    
+    # if(ncol(newdata)==1){
+    #     boot_effect=cbind(newdata = newdata,boot_mat)
+    #   else{
+    #     boot_effect=cbind(newdata = newdata,boot_mat)
+    #   }
     ##### melt the data frame so it can be passed to ggplot
     boot_effect = reshape2::melt(boot_effect)
     names(boot_effect) = c("newdatapoint", "fitted")
@@ -1008,6 +1008,12 @@ boot_plot = function(boot_samples,
     boot_effect = as.data.frame(boot_mat)
     names(boot_effect) = rownames(newdata)
     
+    # if(ncol(newdata)==1){
+    #     boot_effect=cbind(newdata = newdata,boot_mat)
+    #   else{
+    #     boot_effect=cbind(newdata = newdata,boot_mat)
+    #   }
+
     ##### melt the data frame so it can be passed to ggplot
     boot_effect = reshape2::melt(boot_effect)
     names(boot_effect) = c("newdatapoint", "fitted")
@@ -1034,16 +1040,52 @@ boot_plot = function(boot_samples,
     q.975 = predict(boot_reg_list[[topic]], 
                     newdata = newdata, 
                     type = "quantile", at = c(0.975))
-    fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
-    
+    if(ncol(newdata)==1){
+        fitted_values=data.frame(newdata = newdata,q.025,q.5,q.975)
+      }else{
+        fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
+      }
     ##### melt the data frame so it can be passed to ggplot
     fitted_values = reshape2::melt(fitted_values)
     names(fitted_values) = c("newdatapoint","quantile", "value")
     
     ##### create and evaluate plot
     topic_plot = ggplot2::ggplot(data = fitted_values, 
-                                 ggplot2::aes(x=newdatapoint, y=value, group = quantile))+
-      geom_line()+
+                                 ggplot2::aes(x=newdatapoint, y=value,colour = quantile, group = quantile))+
+      geom_line(lwd = 2, alpha = .5)+
+      ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
+                    x = "Covariate value",
+                    y = "P(topic | new data)")
+    
+  }
+  if(!is.null(newdata) & !bootstrapped & Model == "GAM"){
+    # want to plot data fit at "newdata"
+    # Beta regression model was used
+    # plotting the prediction and prediction interval
+    
+    fitted_values = predict(boot_reg_list[[topic]], 
+                    newdata = newdata, 
+                    type = "response",se.fit=TRUE)
+    if(ncol(newdata)==1){
+      fitted_values=data.frame(newdata = newdata,
+                             fitted = fitted_values$fit,
+                             plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
+                             minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+    }else{
+      fitted_values=data.frame(newdata = rownames(newdata),
+                               fitted = fitted_values$fit,
+                               plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
+                               minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+    }
+    colnames(fitted_values)[1] = "newdata"
+    ##### melt the data frame so it can be passed to ggplot
+    fitted_values = reshape2::melt(fitted_values,"newdata")
+    names(fitted_values) = c("newdata","variable", "value")
+    
+    ##### create and evaluate plot
+    topic_plot = ggplot2::ggplot(data = fitted_values, 
+                                 ggplot2::aes(x=newdata, y=value,colour = variable))+
+      geom_line(lwd = 2, alpha = .5)+
       ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
                     x = "Covariate value",
                     y = "P(topic | new data)")
