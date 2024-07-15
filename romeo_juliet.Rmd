@@ -1,7 +1,7 @@
 ---
 title: "A Brief Tutorial on NMFregress"
 author: Gabriel Phelan & Dave Campbell
-date: May 2024
+date: July 2024
 output: html_document
 ---
 
@@ -258,9 +258,5 @@ boot_plot(beta_gam,
 
 ## Finally
 
-So `juliet`, `death`, and `dead` are highly associated with act V. Go figure. 
-
-## The End ## 
-
-Cool. Hope that gives you a feel for the package. Happy NMF'ing! 
+So `juliet`, `death`, are increasingly likely as the story moves along.
 
