@@ -937,10 +937,14 @@ boot_plot = function(boot_samples,
   
   ##### check inputs
   if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
-    print("will eventually make boot_reg a class to fix this ad hoc handling")
+    # print("looks like output from get_regression_coefs")
+    # print("might eventually make boot_reg a class to fix this ad hoc handling")
     # if boot_samples comes from get_regression_coefs 
     boot_reg_list = boot_samples
     bootstrapped = FALSE 
+    if("gam" %in% class(boot_reg_list[[topic]])){
+      Model = "GAM"
+    }
   }else{
     # if boot_samples comes from boot_reg
     boot_reg_list = boot_samples$boot_reg
@@ -953,170 +957,225 @@ boot_plot = function(boot_samples,
   
   if(!(is.list(boot_samples))){
     stop("boot_samples must be a list of vectors/matrices, as output by
-              boot_reg().")
+              boot_reg() or get_regression_coefs().")
   }
-  if(!(topic %in% row.names(boot_reg_list[[1]]))){
+  if(bootstrapped & !(topic %in% row.names(boot_reg_list[[1]]))){
     stop("Topic not among the anchor words.")
   }
-  if(!is.null(newdata) &  bootstrapped & Model == "OLS"){
-    # want to plot data fit at "newdata"
-    # OLS model was used
-    # plotting the bootstrap distribution
-    fitted_values = lapply(boot_reg_list, function(x){x%*%t(newdata)})
-    num_covar = dim(fitted_values[[1]])[2]
-    num_samples = length(fitted_values)
-    boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
-    for(i in 1:length(fitted_values)){
-      boot_mat[i,] = fitted_values[[i]][topic,]
-    }
-    boot_effect = as.data.frame(boot_mat)
-    names(boot_effect) = rownames(newdata)
-    # if(ncol(newdata)==1){
-    #     boot_effect=cbind(newdata = newdata,boot_mat)
-    #   else{
-    #     boot_effect=cbind(newdata = newdata,boot_mat)
-    #   }
-    ##### melt the data frame so it can be passed to ggplot
-    boot_effect = reshape2::melt(boot_effect)
-    names(boot_effect) = c("newdatapoint", "fitted")
-    
-    ##### create and evaluate plot
-    topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
-      geom_boxplot(fill = "lightblue")+
-      ggplot2::labs(title = paste("Bootstrap distribution for Topic =", stringr::str_to_title(topic)),
-                    x = "Covariate value",
-                    y = "P(topic | new data)")
-
+  if(!bootstrapped & !(topic %in% names(boot_reg_list))){
+    stop("Topic not among the anchor words.")
   }
-  if(!is.null(newdata) &  bootstrapped & Model == "BETA"){
-    # want to plot data fit at "newdata"
-    # Beta regression model was used
-    # plotting the bootstrap distribution
-    boot_reg_colnames = boot_reg_list[[1]]|> colnames() 
-    mean_cols         = boot_reg_colnames |> grep(pattern = "mean", value = TRUE)
-    precision_cols    = boot_reg_colnames |> grep(pattern = "mean", value = TRUE, invert = TRUE)
-    
-    xBeta         = lapply(boot_reg_list, function(x){x[,mean_cols]%*%t(newdata)})
-    fitted_values = lapply(xBeta, function(xB){exp(xB)/(1-exp(xB))})
-
-    num_covar = dim(fitted_values[[1]])[2]
-    num_samples = length(fitted_values)
-    boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
-    for(i in 1:length(fitted_values)){
-      boot_mat[i,] = fitted_values[[i]][topic,]
-    }
-    boot_effect = as.data.frame(boot_mat)
-    names(boot_effect) = rownames(newdata)
-    
-    # if(ncol(newdata)==1){
-    #     boot_effect=cbind(newdata = newdata,boot_mat)
-    #   else{
-    #     boot_effect=cbind(newdata = newdata,boot_mat)
-    #   }
-
-    ##### melt the data frame so it can be passed to ggplot
-    boot_effect = reshape2::melt(boot_effect)
-    names(boot_effect) = c("newdatapoint", "fitted")
-    
-    ##### create and evaluate plot
-    topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
-      geom_boxplot(fill = "lightblue")+
-      ggplot2::labs(title = paste("Bootstrap distribution for Topic =", stringr::str_to_title(topic)),
-                    x = "Covariate value",
-                    y = "P(topic | new data)")
-    
-  }
-  if(!is.null(newdata) & !bootstrapped & Model == "BETA"){
-    # want to plot data fit at "newdata"
-    # Beta regression model was used
-    # plotting the prediction and prediction interval
-    
-    q.025 = predict(boot_reg_list[[topic]], 
-                    newdata = newdata, 
-                    type = "quantile", at = c(.025))
-    q.5   = predict(boot_reg_list[[topic]], 
-                    newdata = newdata, 
-                    type = "quantile", at = c(0.5))
-    q.975 = predict(boot_reg_list[[topic]], 
-                    newdata = newdata, 
-                    type = "quantile", at = c(0.975))
-    if(ncol(newdata)==1){
+  
+  if( is.null(newdata)){
+    # if   = Using betaregression at the observation points
+    # else = Just plot the effects not fits.
+    if(any(class(boot_reg_list[[topic]])=="betareg")){
+      
+      # want to plot data fit at "newdata"
+      # Beta regression model was used
+      # plotting the prediction and prediction interval
+      newdata = boot_reg_list[[topic]]$model
+      newdata = subset(newdata, select=-c(y))|> unique()
+      # in case you have repeated binary measures make the labels nicer:
+      if(all(apply(newdata, 1, function(x){all(x%in%c(0,1))}))){
+        names_2_use = apply(newdata,1,function(x){ind=which(x!=0);paste(names(x)[ind], collapse = "+")})
+        rownames(newdata) = names_2_use
+      }
+      q.025 = predict(boot_reg_list[[topic]], 
+                      newdata = newdata, 
+                      type = "quantile", at = c(.025))
+      q.5   = predict(boot_reg_list[[topic]], 
+                      newdata = newdata, 
+                      type = "quantile", at = c(.5))
+      q.975 = predict(boot_reg_list[[topic]], 
+                      newdata = newdata, 
+                      type = "quantile", at = c(0.975))
+      if(ncol(newdata)==1){
         fitted_values=data.frame(newdata = newdata,q.025,q.5,q.975)
       }else{
         fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
       }
-    ##### melt the data frame so it can be passed to ggplot
-    fitted_values = reshape2::melt(fitted_values)
-    names(fitted_values) = c("newdatapoint","quantile", "value")
-    
-    ##### create and evaluate plot
-    topic_plot = ggplot2::ggplot(data = fitted_values, 
-                                 ggplot2::aes(x=newdatapoint, y=value,colour = quantile, group = quantile))+
-      geom_line(lwd = 2, alpha = .5)+
-      ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
-                    x = "Covariate value",
-                    y = "P(topic | new data)")
-    
-  }
-  if(!is.null(newdata) & !bootstrapped & Model == "GAM"){
-    # want to plot data fit at "newdata"
-    # Beta regression model was used
-    # plotting the prediction and prediction interval
-    
-    fitted_values = predict(boot_reg_list[[topic]], 
-                    newdata = newdata, 
-                    type = "response",se.fit=TRUE)
-    if(ncol(newdata)==1){
-      fitted_values=data.frame(newdata = newdata,
-                             fitted = fitted_values$fit,
-                             plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
-                             minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+      ##### melt the data frame so it can be passed to ggplot
+      fitted_values = reshape2::melt(fitted_values)
+      names(fitted_values) = c("newdatapoint","quantile", "value")
+      
+      ##### create and evaluate plot
+      topic_plot = ggplot2::ggplot(data = fitted_values, 
+                                   ggplot2::aes(x=newdatapoint, y=value,colour = quantile, group = quantile))+
+        geom_line(lwd = 2, alpha = .5)+
+        ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
+                      x = "Covariate value",
+                      y = "P(topic | new data)")
+      
+      
     }else{
-      fitted_values=data.frame(newdata = rownames(newdata),
-                               fitted = fitted_values$fit,
-                               plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
-                               minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+      # just plot the effects not fits.
+      ##### create a data frame with covariate effects as columns and bootstrap samples as rows
+      num_topics = dim(boot_reg_list[[1]])[1]
+      num_covar = dim(boot_reg_list[[1]])[2]
+      num_samples = length(boot_reg_list)
+      boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
+      for(i in 1:length(boot_reg_list)){
+        boot_mat[i,] = boot_reg_list[[i]][topic,]
+      }
+      boot_effect = as.data.frame(boot_mat)
+      names(boot_effect) = colnames(boot_reg_list[[1]])
+      
+      ##### melt the data frame so it can be passed to ggplot
+      boot_effect = reshape2::melt(boot_effect)
+      names(boot_effect) = c("covar", "weight")
+      
+      ##### create and evaluate plot
+      topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=weight, y=covar))+
+        ggridges::stat_density_ridges(fill = "lightblue")+
+        ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
+        ggplot2::labs(title = paste("Bootstrap Distribution of Coefficients: Topic =", stringr::str_to_title(topic)),
+                      x = expression(beta),
+                      y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
+      
+      
     }
-    colnames(fitted_values)[1] = "newdata"
-    ##### melt the data frame so it can be passed to ggplot
-    fitted_values = reshape2::melt(fitted_values,"newdata")
-    names(fitted_values) = c("newdata","variable", "value")
+  }else{
+    if( bootstrapped){
     
-    ##### create and evaluate plot
-    topic_plot = ggplot2::ggplot(data = fitted_values, 
-                                 ggplot2::aes(x=newdata, y=value,colour = variable))+
-      geom_line(lwd = 2, alpha = .5)+
-      ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
-                    x = "Covariate value",
-                    y = "P(topic | new data)")
-    
+      if( Model == "BETA"){
+      # want to plot data fit at "newdata"
+      # Beta regression model was used
+      # plotting the bootstrap distribution
+      boot_reg_colnames = boot_reg_list[[1]]|> colnames() 
+      mean_cols         = boot_reg_colnames |> grep(pattern = "mean", value = TRUE)
+      precision_cols    = boot_reg_colnames |> grep(pattern = "mean", value = TRUE, invert = TRUE)
+      
+      xBeta         = lapply(boot_reg_list, function(x){x[,mean_cols]%*%t(newdata)})
+      fitted_values = lapply(xBeta, function(xB){exp(xB)/(1-exp(xB))})
+      
+      num_covar = dim(fitted_values[[1]])[2]
+      num_samples = length(fitted_values)
+      boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
+      for(i in 1:length(fitted_values)){
+        boot_mat[i,] = fitted_values[[i]][topic,]
+      }
+      boot_effect = as.data.frame(boot_mat)
+      names(boot_effect) = rownames(newdata)
+      
+      # if(ncol(newdata)==1){
+      #     boot_effect=cbind(newdata = newdata,boot_mat)
+      #   else{
+      #     boot_effect=cbind(newdata = newdata,boot_mat)
+      #   }
+      
+      ##### melt the data frame so it can be passed to ggplot
+      boot_effect = reshape2::melt(boot_effect)
+      names(boot_effect) = c("newdatapoint", "fitted")
+      
+      ##### create and evaluate plot
+      topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
+        geom_boxplot(fill = "lightblue")+
+        ggplot2::labs(title = paste("Beta model fit for Topic =", stringr::str_to_title(topic)),
+                      x = "Covariate value",
+                      y = "P(topic | new data)")
+      
+    }
+      if( Model == "OLS"){
+        # want to plot data fit at "newdata"
+        # OLS model was used
+        # plotting the bootstrap distribution
+        fitted_values = lapply(boot_reg_list, function(x){x%*%t(newdata)})
+        num_covar = dim(fitted_values[[1]])[2]
+        num_samples = length(fitted_values)
+        boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
+        for(i in 1:length(fitted_values)){
+          boot_mat[i,] = fitted_values[[i]][topic,]
+        }
+        boot_effect = as.data.frame(boot_mat)
+        names(boot_effect) = rownames(newdata)
+        # if(ncol(newdata)==1){
+        #     boot_effect=cbind(newdata = newdata,boot_mat)
+        #   else{
+        #     boot_effect=cbind(newdata = newdata,boot_mat)
+        #   }
+        ##### melt the data frame so it can be passed to ggplot
+        boot_effect = reshape2::melt(boot_effect)
+        names(boot_effect) = c("newdatapoint", "fitted")
+        
+        ##### create and evaluate plot
+        topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=newdatapoint, y=fitted))+
+          geom_boxplot(fill = "lightblue")+
+          ggplot2::labs(title = paste("Bootstrap distribution for Topic =", stringr::str_to_title(topic)),
+                        x = "Covariate value",
+                        y = "P(topic | new data)")
+        
+    }
+    }else{
+      #not bootstrapped
+      if( any(class(boot_reg_list[[1]]) == "betareg")){
+      # want to plot data fit at "newdata"
+      # Beta regression model was used
+      # plotting the prediction and prediction interval
+      
+      q.025 = predict(boot_reg_list[[topic]], 
+                      newdata = data.frame(newdata), 
+                      type = "quantile", at = c(.025))
+      q.5   = predict(boot_reg_list[[topic]], 
+                      newdata = data.frame(newdata), 
+                      type = "quantile", at = c(0.5))
+      q.975 = predict(boot_reg_list[[topic]], 
+                      newdata = data.frame(newdata), 
+                      type = "quantile", at = c(0.975))
+      if(ncol(newdata)==1){
+        fitted_values=data.frame(newdata = newdata,q.025,q.5,q.975)
+      }else{
+        fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
+      }
+      ##### melt the data frame so it can be passed to ggplot
+      fitted_values = reshape2::melt(fitted_values)
+      names(fitted_values) = c("newdatapoint","quantile", "value")
+      
+      ##### create and evaluate plot
+      topic_plot = ggplot2::ggplot(data = fitted_values, 
+                                   ggplot2::aes(x=newdatapoint, y=value,colour = quantile, group = quantile))+
+        geom_line(lwd = 2, alpha = .5)+
+        ggplot2::labs(title = paste("Model fit with 95% interval, Topic =", stringr::str_to_title(topic)),
+                      x = "Covariate value",
+                      y = "P(topic | new data)")
+      
+    }else{
+      if( Model == "GAM"){
+      # want to plot data fit at "newdata"
+      # Beta regression model was used
+      # plotting the prediction and prediction interval
+      
+      fitted_values = predict(boot_reg_list[[topic]], 
+                              newdata = newdata, 
+                              type = "response",se.fit=TRUE)
+      if(ncol(newdata)==1){
+        fitted_values=data.frame(newdata = newdata,
+                                 fitted = fitted_values$fit,
+                                 plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
+                                 minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+      }else{
+        fitted_values=data.frame(newdata = rownames(newdata),
+                                 fitted = fitted_values$fit,
+                                 plus_1sefit  = fitted_values$fit + fitted_values$se.fit,
+                                 minus_1sefit = fitted_values$fit - fitted_values$se.fit)
+      }
+      colnames(fitted_values)[1] = "newdata"
+      ##### melt the data frame so it can be passed to ggplot
+      fitted_values = reshape2::melt(fitted_values,"newdata")
+      names(fitted_values) = c("newdata","variable", "value")
+      
+      ##### create and evaluate plot
+      topic_plot = ggplot2::ggplot(data = fitted_values, 
+                                   ggplot2::aes(x=newdata, y=value,colour = variable))+
+        geom_line(lwd = 2, alpha = .5)+
+        ggplot2::labs(title = paste("GAM Model fit +/- 1 SE, Topic =", stringr::str_to_title(topic)),
+                      x = "Covariate value",
+                      y = "P(topic | new data)")
+      
+      }
+    }
+    }
   }
-  
-  if(is.null(newdata)){
-  ##### create a data frame with covariate effects as columns and bootstrap samples as rows
-  num_topics = dim(boot_samples[[1]])[1]
-  num_covar = dim(boot_samples[[1]])[2]
-  num_samples = length(boot_samples)
-  boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
-  for(i in 1:length(boot_samples)){
-    boot_mat[i,] = boot_samples[[i]][topic,]
-  }
-  boot_effect = as.data.frame(boot_mat)
-  names(boot_effect) = colnames(boot_samples[[1]])
-  
-  ##### melt the data frame so it can be passed to ggplot
-  boot_effect = reshape2::melt(boot_effect)
-  names(boot_effect) = c("covar", "weight")
-  
-  ##### create and evaluate plot
-  topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=weight, y=covar))+
-    ggridges::stat_density_ridges(fill = "lightblue")+
-    ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
-    ggplot2::labs(title = paste("Topic =", stringr::str_to_title(topic)),
-                  x = expression(beta),
-                  y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
-  
-}
   
 
 eval(topic_plot)
@@ -1147,9 +1206,19 @@ create_error_bars = function(boot_samples, topic = NULL, coverage = .95){
   ##### check inputs
   if(!(is.list(boot_samples))){
     stop("boot_samples must be a list of matrices, as outputted by
-              boot_reg().")
+              boot_reg() or get_regression_coefs.")
+  } 
+  if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
+    # print("looks like output from get_regression_coefs")
+    # print("might eventually make boot_reg a class to fix this ad hoc handling")
+    # if boot_samples comes from get_regression_coefs 
+    boot_reg_list = boot_samples
+  }else{
+    # if boot_samples comes from boot_reg
+    boot_reg_list = boot_samples$boot_reg
   }
-  if(!(is.matrix(boot_samples[[1]]))){
+
+  if(!(is.matrix(boot_reg_list[[1]]))){
     stop("boot_samples must be a list of matrices, as outputted by
               boot_reg(). This function does not yet support large design matrices.")
   }
@@ -1158,7 +1227,7 @@ create_error_bars = function(boot_samples, topic = NULL, coverage = .95){
   }
   
   ##### melt and name a data frame of samples
-  sample_frame = reshape2::melt(boot_samples)
+  sample_frame = reshape2::melt(boot_reg_list)
   if(!is.null(topic)){
     sample_frame = dplyr::filter(sample_frame, Var1 %in% topic)
   }
