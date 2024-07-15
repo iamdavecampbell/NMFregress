@@ -2,7 +2,7 @@
 title: "A Brief Tutorial on NMFregress"
 author: Gabriel Phelan & Dave Campbell
 date: May 2024
-output: md_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -18,13 +18,16 @@ This document will serve as a brief introduction to the `NMFregress` package, wh
 We want to do topic modelling, so we'll need some documents. Let's use Romeo and Juliet (RJ), freely available on Project Gutenberg: https://www.gutenberg.org/ebooks/1112. Lines in the play will be considered documents, and we'll partition them by the act in which they appear. Since acts are deliberately chosen to divide a play's plot into coherent segments, we should be able to detect statistical variation in Shakespeare's language as the play progresses. I've prepared a term-document matrix (TDM) and a factor containing the play's acts using an admittedly haphazard script contained in this repository -- it's not the prettiest but it gets the job done. Let's load the library and the RJ data: 
 
 
-```{r}
-# It's clunky for for version 0.5 just source the files after cloning the git repo
-# library(NMFregress)
-```
 
 ```{r, message = FALSE}
 library(tidyverse)
+library(ggpubr) # for arranging plots 
+
+```
+
+
+
+```{r, message = FALSE, results='hide'}
 # It's clunky for for version 0.5 just source the files after cloning the git repo
 anchor_files = list.files("../NMFregress", pattern = ".R$")
 lapply(paste0("../NMFregress/",anchor_files), source)
@@ -140,13 +143,26 @@ Let's extract and plot the effect sizes for the regression coefficients for the 
 Note that we ran a model where act 1 was the baseline, so if all other effects are positive or negative relative to the baseline.  I am rounding the error bars, for viewing convenience. 
 
 
-```{r}
-boot_plot(OLS_bootstrap, "juliet")
-boot_plot(OLS_bootstrap, "dead")
+```{r, message = FALSE}
+# plot the raw OLS coefficients:
+
+ols_boot_juliet = boot_plot(OLS_bootstrap, "juliet") 
+ols_boot_dead   = boot_plot(OLS_bootstrap, "dead")
+ggarrange(ols_boot_juliet, ols_boot_dead, 
+          ncol = 1, nrow = 2)
+
+# or plot the model fit by including new data at which to evaluate the OLS model:
+newdata = my_output$covariates|> unique()
+rownames(newdata) = c("act1","act2","act3","act4","act5")
+
+ols_fit_juliet = boot_plot(OLS_bootstrap, "juliet", newdata) 
+ols_fit_dead   = boot_plot(OLS_bootstrap, "dead", newdata)
+ggarrange(ols_fit_juliet, ols_fit_dead, 
+          ncol = 1, nrow = 2)
 
 create_error_bars(OLS_bootstrap, topic = c("dead"))|>
     dplyr::mutate(
-      dplyr::across(is.numeric, ~round(.,digits =4))
+      dplyr::across(where(is.numeric), ~round(.,digits =4))
       )
 
 ```
@@ -176,9 +192,37 @@ beta_boot = boot_reg(my_output,
                            topics = c("night","love","juliet", "death", "dead"))
 
 
-boot_plot(beta_boot, "juliet")
-boot_plot(beta_boot, "dead")
+beta_asymptotic_juliet = boot_plot(beta_asymptotic, "juliet")
+beta_asymptotic_dead   = boot_plot(beta_asymptotic, "dead")
+ggarrange(beta_asymptotic_juliet, beta_asymptotic_dead, 
+          ncol = 1, nrow = 2)
+# or include new observations for the model:
+newdata = my_output$covariates|> unique()
+rownames(newdata) = c("act1","act2","act3","act4","act5")
+
+beta_asymptotic_juliet_newdata = boot_plot(beta_asymptotic, "juliet", newdata = newdata)
+beta_asymptotic_dead_newdata   = boot_plot(beta_asymptotic, "dead"  , newdata = newdata)
+ggarrange(beta_asymptotic_juliet_newdata, beta_asymptotic_dead_newdata, 
+          ncol = 1, nrow = 2)
+
+
+beta_boot_juliet = boot_plot(beta_boot, "juliet")
+beta_boot_dead   = boot_plot(beta_boot, "dead")
+ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,
+          beta_asymptotic_dead_newdata, beta_boot_dead,
+          ncol = 2, nrow = 2)
+
+# or include new observations for the model:
+beta_boot_juliet_newdata = boot_plot(beta_boot, "juliet",newdata)
+beta_boot_dead_newdata   = boot_plot(beta_boot, "dead",newdata)
+
+ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,beta_boot_juliet_newdata,
+          beta_asymptotic_dead_newdata, beta_boot_dead,beta_boot_dead_newdata,
+          ncol = 3, nrow = 2)
 ```
+
+
+
 Model output a list of length = the number of samples.  Since we have **samples =1** then we need to extract the model output from the first element of the list.  Then we can call by topic and use the asymptotic results for the beta regression.
 
 
@@ -186,7 +230,13 @@ Model output a list of length = the number of samples.  Since we have **samples 
 beta_asymptotic$death|> summary()
 ```
 
+### Note about width of beta regression intervals:
+
+Note that when running beta regression on a small number of documents will likely include _long tails_.  Here it shows up as the .025 and .5 quantiles being close to zero, but the .975 quantile is close to 1.  With more documents, there is more information that will tighten the density around the point estimate.
+
 ## 6. Inference III.  Generalized Additive Model with Beta Regression
+
+This comes from the **mgcv** package using  _beta_ regression.  These intervals are additive and can produce values beyond the [0,1] bounds.  The way around that is more complicated and beyond this software version.  
 
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE }
@@ -198,15 +248,10 @@ beta_gam = get_regression_coefs(output = my_output,
                     return_just_coefs = FALSE,
                     topics = c("night","love","juliet", "death", "dead")
          )
+boot_plot(beta_gam, 
+          topic = "death", 
+          newdata = data.frame(acts=1:5))
 
-
-beta_gam_boot = boot_reg(output = my_output, 
-                    Model =  "GAM", 
-                    samples = 100,
-                    return_just_coefs = TRUE,
-                    topics = c("night","love","juliet", "death", "dead")
-         )
-  
 
 ```
 
