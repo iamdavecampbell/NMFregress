@@ -1,11 +1,14 @@
 ## Installation; from command line:
 From the command line:
+
 git clone https://github.com/iamdavecampbell/NMFregress.git
 
 
 
 Then source the files by openning R and running:
+
 anchor_files = list.files("../NMFregress", pattern = ".R$")
+
 lapply(paste0("../NMFregress/",anchor_files), source)
 
 
