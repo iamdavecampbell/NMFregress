@@ -962,7 +962,7 @@ boot_plot = function(boot_samples,
   if(bootstrapped & !(topic %in% row.names(boot_reg_list[[1]]))){
     stop("Topic not among the anchor words.")
   }
-  if(!bootstrapped & !(topic %in% names(boot_reg_list))){
+  if(!bootstrapped & !(topic %in% c(names(boot_reg_list),rownames(boot_reg_list[[1]])))){
     stop("Topic not among the anchor words.")
   }
   
@@ -1081,6 +1081,9 @@ boot_plot = function(boot_samples,
         # OLS model was used
         # plotting the bootstrap distribution
         fitted_values = lapply(boot_reg_list, function(x){x%*%t(newdata)})
+        if(!is.null(theta_transformation)){
+          fitted_values = lapply(fitted_values,function(x){exp(x)-1})
+        }
         num_covar = dim(fitted_values[[1]])[2]
         num_samples = length(fitted_values)
         boot_mat = matrix(rep(0, num_samples*num_covar), ncol = num_covar)
@@ -1175,6 +1178,7 @@ boot_plot = function(boot_samples,
       }
     }
     }
+    
   }
   
 
