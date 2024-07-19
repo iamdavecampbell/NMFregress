@@ -724,13 +724,14 @@ boot_reg = function(output, samples,
 #' 
 boot_reg_stratified = function(output, samples, parallel = 4,
                                obs_weights = NULL, 
-                               Model = Model, 
+                               Model = c("BETA", "GAM", "OLS"), 
                                return_just_coefs = TRUE, 
                                topics = NULL,
                                formula = NULL,
                                link = "logit",
                                link.phi = "log", 
                                type = "ML",
+                               theta_transformation = NULL,
                                na.rm = TRUE){
   
   ##### check input types/whether covariates are specified
@@ -827,7 +828,10 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                                         formula = formula,
                                         link = link,
                                         link.phi = link.phi, 
-                                        type = type)
+                                        type = type, 
+                                        theta_transformation = theta_transformation,
+                                        topics = topics,
+                                        na.rm = na.rm)
       to_return[[i]] = boot_coefs
       
       ##### progress of iterations
@@ -880,7 +884,11 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                                   formula = formula,
                                   link = link,
                                   link.phi = link.phi, 
-                                  type = type))
+                                  type = type, 
+                                  theta_transformation = theta_transformation,
+                                  topics = topics,
+                                  na.rm = na.rm)
+      )
     }
   }
   ##### return
@@ -894,7 +902,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                   type = type, 
                   theta_transformation = theta_transformation,
                   topics = topics,
-                  na.rm = na.rm)
+                  na.rm = na.rm,
+                  type = "stratified bootstrap")
         )
   
    
