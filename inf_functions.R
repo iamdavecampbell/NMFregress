@@ -1,5 +1,6 @@
 require(mgcv)
 require(dplyr)
+require(prodlim) # for the row match function in the stratified bootstrap version.
 #' get_regression_coefs
 #'
 #' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
@@ -64,7 +65,7 @@ get_regression_coefs = function(output, obs_weights = NULL,
   if(is.null(topics)){
     topics = output$anchors
   }
-  # if(length(Model)==3){Model = "BETA"}
+  if(length(Model)==3){Model = "BETA"}
   ##### set up matrices for regression/return value
   # select the rows corresponding to topics selected:
   if(na.rm){
@@ -133,14 +134,14 @@ get_regression_coefs = function(output, obs_weights = NULL,
       theta_nonzero = log(theta+1)
     }else{warning("un-recognized theta_transformation; skipping it.")}
   }
-  if( (min(theta)==0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
+  if( (min(theta)<=0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
     # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 1000.
     theta_nonzero = normalize(theta+min(1/ncol(theta) ,min(theta[theta>0]/1000)), 
                               denominator = denominator +
                                 2*min(1/ncol(theta) ,min(theta[theta>0]/1000))
                               )
-    warning(paste(" beta regresssion won't work with observed {0,1} since this will result in infinite betas; increasing all values and then re-scaling.\n",
+    warning(paste(" beta regresssion won't work with observed {0,1} since this will result in infinite betas; rescaling valued by 'sum_theta_over_docs' + nugget of 1/ncol.\n",
                   " Minimum is now ", round(min(theta_nonzero),7),
                   " Maximum is now ", round(max(theta_nonzero),7)))
     
@@ -785,12 +786,16 @@ boot_reg_stratified = function(output, samples, parallel = 4,
     zero_block = matrix(0, nrow(theta),nrow(covariates) - ncol(theta))
   covariate_block = head(covariates, ncol(theta))
   # identify the categories (remove the intercept)
-  categorical_groups = covariate_block[, apply(covariate_block,2,function(x){length(unique(x))>1})]
-  groups = apply(categorical_groups,1,function(x){names(x[x==1])})
+  categorical_groups = unique(covariate_block)
+  groups = apply(covariate_block,1,function(x){paste0(names(x[x==1]), collapse = "_")})
   
   group_levels = unique(groups)
-  group_count = table(groups)
-  
+  rownames(categorical_groups) = group_levels
+  group_count = NULL
+  for( group in 1:nrow(categorical_groups)){
+    group_count[group] = sum(row.match(covariate_block,categorical_groups[group,],0))
+  }
+  names(group_count) = group_levels
   
   if(parallel ==1){
     for(i in 1:samples){
@@ -802,7 +807,9 @@ boot_reg_stratified = function(output, samples, parallel = 4,
       sampled_inds = NULL
       for(group_strat in group_levels){
         ####NOTE THIS NEEDS RETHINKING WHEN THERE ARE MULTIPLE COVARIATES
-        sampled_indices = which(groups == group_strat)[sample(1:group_count[[group_strat]], replace = T)]
+        sampled_indices = which(row.match(covariate_block,categorical_groups[group_strat,],0)==1)[
+                                        sample(1:group_count[[group_strat]], replace = T)
+                                        ]
         sampled_inds = c(sampled_inds,sampled_indices)
         boot_docs[start+(1:group_count[[group_strat]])] = sampled_indices
         start = start + group_count[[group_strat]]
@@ -1035,11 +1042,11 @@ boot_plot = function(boot_samples,
       names(boot_effect) = c("covar", "weight")
       
       ##### create and evaluate plot
-      topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=weight, y=covar))+
-        ggridges::stat_density_ridges(fill = "lightblue")+
+      topic_plot = ggplot2::ggplot(data = boot_effect, ggplot2::aes(x=weight, y=covar, height = after_stat(density)))+
+        ggridges::stat_density_ridges(fill = "lightblue",rel_min_height = 0.005,scale = 1.25, stat = "density")+
         ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
         ggplot2::labs(title = paste("Bootstrap Distribution of Coefficients: Topic =", stringr::str_to_title(topic)),
-                      x = expression(beta),
+                      x = "P(topic|X)",#expression(beta),
                       y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
       
       
