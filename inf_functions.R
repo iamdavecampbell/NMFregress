@@ -1,6 +1,8 @@
 require(mgcv)
 require(dplyr)
-require(prodlim) # for the row match function in the stratified bootstrap version.
+require(prodlim)  # for the row match function in the stratified bootstrap version.
+require(betareg)
+require(doParallel) # for parallel computing in  stratified bootstrap
 #' get_regression_coefs
 #'
 #' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
