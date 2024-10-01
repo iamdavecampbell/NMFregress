@@ -137,14 +137,21 @@ get_regression_coefs = function(output, obs_weights = NULL,
     }else{warning("un-recognized theta_transformation; skipping it.")}
   }
   if( (min(theta)<=0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
+    # assume that normalization has not yet occurred
+    theta_nonzero = normalize(theta , denominator = denominator )
+  }
+  # in the off chance that this is still a problem try this:
+  if( (min(theta)<=0 | max(theta)>=1) & Model %in% c("BETA", "GAM")){
     # increase all values by a tenth of fractional occurrence of a word within a topic:
     # fractional occurrence = minimum of 1/nrow or the smallest nonzezro entry of the column / 1000.
     theta_nonzero = normalize(theta+min(1/ncol(theta) ,min(theta[theta>0]/1000)), 
                               denominator = denominator +
                                 2*min(1/ncol(theta) ,min(theta[theta>0]/1000))
                               )
-    warning(paste(" beta regresssion won't work with observed {0,1} since this will result in infinite betas; rescaling valued by 'sum_theta_over_docs' + nugget of 1/ncol.\n",
+    warning(paste(" Some topic probabilities are 0 or 1. Increasing all probabilities by (1/ncol.\n) and then dividing  by '(sum_theta_over_docs' + 2/ncol.\n)",
+                  " Minimum was ",    round(min(theta),7),
                   " Minimum is now ", round(min(theta_nonzero),7),
+                  " Maximum was ",    round(max(theta),7),
                   " Maximum is now ", round(max(theta_nonzero),7)))
     
   }else{
@@ -935,6 +942,8 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #' 
 #' @param link Used if 'boot_samples' is not from boot_reg and therefore doesn't contain the model information already.  Used if newdata is supplied so that the function knows how to convert the bootstrap samples into predictions at 'newdata' points.  WILL BE REMOVED IN FUTURE
 #'
+#' @param from_stm logical hack so that the same plots from can be made from the output of STM
+#'
 #' @return A list as produced by ggplot2. Calling this function without assignment to a variable
 #' will send a plot to the plotting window.
 #'
@@ -951,7 +960,8 @@ boot_plot = function(boot_samples,
                      newdata=NULL, 
                      Model = NULL, 
                      link = NULL,
-                     theta_transformation = NULL){
+                     theta_transformation = NULL,
+                     from_stm = FALSE){
   
   ##### check inputs
   if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
@@ -959,7 +969,7 @@ boot_plot = function(boot_samples,
     # print("might eventually make boot_reg a class to fix this ad hoc handling")
     # if boot_samples comes from get_regression_coefs 
     boot_reg_list = boot_samples
-    bootstrapped = FALSE 
+    bootstrapped = from_stm 
     if("gam" %in% class(boot_reg_list[[topic]])){
       Model = "GAM"
     }
@@ -1140,13 +1150,16 @@ boot_plot = function(boot_samples,
       q.5   = predict(boot_reg_list[[topic]], 
                       newdata = data.frame(newdata), 
                       type = "quantile", at = c(0.5))
+      mean   = predict(boot_reg_list[[topic]], 
+                      newdata = data.frame(newdata), 
+                      type = "response", at = c(0.5))
       q.975 = predict(boot_reg_list[[topic]], 
                       newdata = data.frame(newdata), 
                       type = "quantile", at = c(0.975))
       if(ncol(newdata)==1){
-        fitted_values=data.frame(newdata = newdata,q.025,q.5,q.975)
+        fitted_values=data.frame(newdata = newdata,q.025,q.5,mean,q.975)
       }else{
-        fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,q.975)
+        fitted_values=data.frame(newdata = rownames(newdata),q.025,q.5,mean,q.975)
       }
       ##### melt the data frame so it can be passed to ggplot
       fitted_values = reshape2::melt(fitted_values)
@@ -1193,14 +1206,11 @@ boot_plot = function(boot_samples,
                       x = "Covariate value",
                       y = "P(topic | new data)")
       
+        }
       }
     }
-    }
-    
   }
-  
-
-eval(topic_plot)
+  eval(topic_plot)
 }
 #' create_error_bars
 #'

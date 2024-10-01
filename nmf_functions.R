@@ -188,3 +188,60 @@ get_lambda = function(output){
    return(words_and_lambda[ order(words_and_lambda$lambdacrit),])
 }
 
+
+
+
+
+
+#' get_reconstruction_error. 
+#' 
+#' Calculates the goodness of fit measure for matrix reconstruction
+#' The Frobenius norm is computed based on a TDM reconstructed with incrementally increasing topics
+#' 
+#' @param output An object of class nmf_output from solve_nmf 
+#' 
+#' @param input all of the information passed into the original solve_nmf function
+#'
+#' @param Ntopics optional, the maximum number of topics to consider 
+#' 
+#' @return a data frame with columns 'topics' taking values from 0: Ntopics.  Note that 
+#' zero is actually the Frobenius norm of the original TDM.  When 'topics'>0 the 
+#' norm is applied to "reconstruction(based on # topics) - original"
+#' 
+#' @examples 
+#' neurips_input = create_input(neurips_tdm, neurips_words, 
+#'    topics = 10, project = FALSE)
+#' neurips_output = solve_nmf(neurips_input)
+#' get_reconstruction_error_frobenius(neurips_output, neurips_input)
+#' 
+#' @export 
+get_reconstruction_error_frobenius = function(output, input, Ntopics = ncol(output$phi)){
+  # find the indices of the anchors from the original data vocabulary
+
+  
+  frobeniusnorm = data.frame(topics = 0:Ntopics,Frobenius_norm = rep(NA, Ntopics+1))
+  docs_2_keep = which(output$sum_theta_over_docs>0)
+  rownames(input$tdm) = input$vocab
+  # handle origin; no topics case
+  frobeniusnorm[1,"Frobenius_norm"] = norm(tdm_hat[,docs_2_keep],
+                                           type = "f")
+  rownames(output$phi) = output$vocab
+  # Ntopics= 1. handle differently since indexing breaks the matrix and requires a transpose
+  tdm_hat = output$phi[output$vocab,1] %*% t(output$theta[1,]) ##<-- there has been a shuffling of rows of phi
+  frobeniusnorm[2,"Frobenius_norm"] = norm(tdm_hat[,docs_2_keep] - 
+                                           input$tdm[output$vocab,docs_2_keep],
+                                           type = "f")
+  
+    for (topic_index in 2:ncol(output$phi)){
+              tdm_hat = output$phi[output$vocab,1:topic_index] %*% output$theta[1:topic_index,]
+              frobeniusnorm[topic_index+1,"Frobenius_norm"] = norm(tdm_hat[,docs_2_keep] - 
+                                                                   input$tdm[output$vocab,docs_2_keep],
+                                                                   type = "f")
+  }
+  
+  p = frobeniusnorm|> ggplot(aes(x = topics, y = Frobenius_norm))+geom_point()
+  print(p)
+  return(list(frobeniusnorm = frobeniusnorm,
+              plot = p))
+}
+
