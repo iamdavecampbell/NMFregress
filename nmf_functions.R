@@ -212,10 +212,10 @@ get_lambda = function(output){
 #' neurips_input = create_input(neurips_tdm, neurips_words, 
 #'    topics = 10, project = FALSE)
 #' neurips_output = solve_nmf(neurips_input)
-#' get_reconstruction_error_frobenius(neurips_output, neurips_input)
+#' get_reconstruction_error(neurips_output, neurips_input)
 #' 
 #' @export 
-get_reconstruction_error_frobenius = function(output, input, Ntopics = ncol(output$phi)){
+get_reconstruction_error = function(output, input, Ntopics = ncol(output$phi)){
   # find the indices of the anchors from the original data vocabulary
 
   

@@ -118,6 +118,19 @@ my_output2 = solve_nmf(my_input2)
 which tells the solver we'd like to project down to 200 dimensions to find the anchor words and likewise for solving the non-negative least squares problems that constitute convex NMF. It's up to you to get these dimensions right -- that is, ensuring that they are actually smaller than the input dimension (which is the number of columns in the TDM). For some context, we've solved NMF for matrices of size ~ 10,000 x 6,000 in a matter of minutes with very good results. Again, this is down to the data as well -- the more signal your TDM carries, the better these projections will work. 
 
 
+## Quality of NMF fit
+
+One may be interested in selecting the number of topics.  The right way to do this is based on whether or not the topics appropriately measure the hypothesis that you wish to test.  
+
+Sometimes it is helpful to see how additional topics assist with the reconstruction error of the original TDM.  There is now a way to do that.  This function calculates the Frobenius norm of reconstruction, $||X- \phi_t\theta_t||$, based on $t\in {1,2,...T}$ topics.  In the output, the topic value of  = 0 implies that no reconstruction is performed and instead the norm is applied to the original TDM $||X||$.
+
+```{r}
+
+reconstruction_error = get_reconstruction_error(my_output, my_input)
+
+reconstruction_error$frobeniusnorm
+```
+
 ## Normalization
 
 Documents have different lengths and the user may see fit to handle this in one of a variety of ways depending on their goals and the domain of interest.  As with all pre-processing, choices have downstream impacts and results are conditional on these choices.  Normalization is the process of scaling the document decomposition in some way so as to avoid mundane inference that is to be interpreted as covariate X is associated with longer documents.  The preferred normalization method is to normalize the $\theta$ matrix so that the topic weights for a document sum to 1.  Normalizing $\theta$ provides the interpretation as the probability of topics for a document.  The bounded elements of $\theta \in [0,1]$, imply that a beta regression is appropriate.  However since topic allocations depend on the across-topic-sums for a document, the scaling will depend on the number of topics.  Inference for this model targets relative effect sizes conditional on the number of topics.  Topics are nearly orthogonal so typically changing the number of topics has little practical impact
