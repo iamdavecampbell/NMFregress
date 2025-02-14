@@ -28,8 +28,8 @@ solve_nmf = function(input, user_anchors = NULL){
     if(!(sum(user_anchors %in% input$vocab) == length(user_anchors))){
       stop("User_anchors must be a subset of vocab.")
     }
-    if(length(user_anchors) != input$topics){
-      stop("Number of anchors does not match number of topics.")
+    if(length(user_anchors) > input$topics){
+      stop("Number of user anchors should not exceed number of topics.")
     }
   }
 
@@ -41,9 +41,10 @@ solve_nmf = function(input, user_anchors = NULL){
   ##### find anchors w/ qr decomposition (using Gaussian random projection if specified)
   ##### store anchors
   if(!(is.null(user_anchors))){
-    extract_order_anchors = user_anchors
-    anchors = sort(user_anchors)
-    cat("Solving nmf.\n")
+    qr_tdm = qr(t(input$tdm), LAPACK = TRUE)
+    extract_order_anchors = anchors = union(user_anchors, input$vocab[qr_tdm$pivot])[1:input$topics]
+    anchors = sort(anchors)
+    cat("Anchors recovered -- solving nmf.\n")
   }else if(input$project == TRUE){
     proj_mat = matrix(stats::rnorm(input$proj_dim*ncol(input$tdm), 0, 1), nrow = input$proj_dim)
     qr_tdm = qr(((1/sqrt(input$proj_dim))*proj_mat) %*% t(input$tdm), LAPACK = TRUE)
