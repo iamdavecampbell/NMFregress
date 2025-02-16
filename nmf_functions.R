@@ -59,8 +59,8 @@ solve_nmf = function(input, user_anchors = NULL){
   }
 
   ##### set up necessary matrices for nmf
-  anchor_rows = which(input$vocab %in% anchors)
-  non_anchor_rows = which(!(input$vocab %in% anchors))
+  anchor_rows = match(anchors, input$vocab)
+  non_anchor_rows = setdiff(1:length(input$vocab), anchor_rows)
   anchor_block = input$tdm[anchor_rows,]
   other_block = input$tdm[non_anchor_rows,]
   Y = matrix(rep(0, length(anchor_rows)*length(non_anchor_rows)), ncol = length(anchor_rows))
