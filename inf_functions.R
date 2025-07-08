@@ -118,7 +118,10 @@ get_regression_coefs = function(output, obs_weights = NULL,
   #  Normalization of theta by it's row sums
   denominator = sum_theta_over_docs
   normalize = function(x,denominator){
-     return( diag( 1/denominator ) %*% x)
+    if(nrow(x)==1){
+      x = t(x)
+    }
+    return( diag( 1/denominator ) %*% x)
    }
   
   
