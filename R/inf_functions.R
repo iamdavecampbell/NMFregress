@@ -1,27 +1,33 @@
 #' Extract the Regression Coefficients
 #'
-#' @description Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
-#' weight. Estimates are produced simultaneously for all topics.
+#' @description Compute OLS coefficients, fitting a linear model between a user's
+#' specified covariates and topic weight. Estimates are produced simultaneously for all topics.
 #'
 #' @param output An object of class nmf_output.
 #'
 #' @param obs_weights Weights for the documents, as used by weighted least squares. Defaults to null.
 #'
-#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".   OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a
+#' Generalized Additive model with family beta.  Default is "BETA".   OLS is only
+#' useful if the covariates are categorical, to be passed to get_regression_coefs
 #'
-#' @param return_just_coefs is a logical, if TRUE then just return the coefficients, if FALSE, then return the output from the lm or betareg function.
+#' @param return_just_coefs is a logical, if TRUE then just return the coefficients,
+#' if FALSE, then return the output from the lm or betareg function.
 #'
-#' @param formula is the formula to be passed into betareg or GAM.  With betaregression, formula has the form Y~ model+for+mean | model+for+dispersion
+#' @param formula is the formula to be passed into betareg or GAM.  With betaregression,
+#'  formula has the form Y~ model+for+mean | model+for+dispersion
 #'
 #' @param link is the link function for the GLM for the mean when using betaregression or GAM.
 #'
 #' @param link.phi is the link function for the GLM for the precision when using betaregression.
 #'
-#' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively
+#' @param type is one of ML, BC, BR for betaregression to use Maximum Likelihood,
+#' Bias Corrected, or Bias Reduced respectively
 #'
 #' @param topics which topics should be used.   If empty, then all of them are used.
 #'
-#' @param na.rm remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+#' @param na.rm remove the problematic 'no topic' documents now so that we don't
+#' end up with a bootstrap sample of all NAs
 #'
 #' @return A matrix of regression coefficients (named if column names have been specified
 #' for the design matrix).
@@ -517,28 +523,38 @@ get_regression_coefs = function(output,
 #'
 #' @param output An object of class nmf_output
 #'
-#' @param samples The number of bootstrap samples to use. If set to 1 then return the full regression model output.  If >1, then collect the coefficients for bootstrap.
+#' @param samples The number of bootstrap samples to use. If set to 1 then return
+#' the full regression model output.  If >1, then collect the coefficients for bootstrap.
 #'
 #' @param obs_weights weights for observations to be passed to get_regression_coefs
 #'
-#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a
+#' Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #'
-#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' @param return_just_coefs returns the coefficients as opposed to the full
+#' betaregression output to be passed to get_regression_coefs
 #'
-#' @param topics is a vector of the subset of topics of interest.  Default is to perform regression on all topics.
+#' @param topics is a vector of the subset of topics of interest.  Default is to
+#' perform regression on all topics.
 #'
-#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and
+#' var(Y)=Zß for the precision to be passed to get_regression_coefs
 #'
-#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs or when using GAM
+#' @param link is the link function for the betaregression GLM to be passed to
+#' get_regression_coefs or when using GAM
 #'
-#' @param link.phi is the link function for the precision to be passed to get_regression_coefs, only for betaregression
+#' @param link.phi is the link function for the precision to be passed to
+#' get_regression_coefs, only for betaregression
 #'
-#' @param na.rm remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+#' @param na.rm remove the problematic 'no topic' documents now so that we don't
+#' end up with a bootstrap sample of all NAs
 #'
-#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or
+#' bias corrected estimates to be passed to get_regression_coefs
 #'
 #'
-#' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
+#' @return Most of the original call values and a boot_reg list containing
+#' matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
 #' of the associated estimator; see brett_plot() and create_error_bars().
@@ -704,23 +720,31 @@ boot_reg = function(output, samples,
 #'
 #' @param obs_weights weights for observations to be passed to get_regression_coefs
 #'
-#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
+#' @param Model choose c("BETA", "GAM", "OLS") for OLS, beta regression or a
+#' Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs
 #'
-#' @param return_just_coefs returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs
+#' @param return_just_coefs returns the coefficients as opposed to the full
+#' betaregression output to be passed to get_regression_coefs
 #'
-#' @param topics is a vector of the subset of topics of interest.  Default is to perform regression on all topics.
+#' @param topics is a vector of the subset of topics of interest.  Default is to
+#' perform regression on all topics.
 #'
-#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs
+#' @param formula of the form Y = X |Z  for the model E(Y) = XB for the mean and
+#' var(Y)=Zß for the precision to be passed to get_regression_coefs
 #'
-#' @param link is the link function for the betaregression GLM to be passed to get_regression_coefs
+#' @param link is the link function for the betaregression GLM to be passed to
+#' get_regression_coefs
 #'
 #' @param link.phi is the link function for the precision to be passed to get_regression_coefs
 #'
-#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs
+#' @param type  is one of ML, BR, BC for maximum likelihood, bias reduces, or bias
+#' corrected estimates to be passed to get_regression_coefs
 #'
-#' @param na.rm remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs
+#' @param na.rm remove the problematic 'no topic' documents now so that we don't
+#' end up with a bootstrap sample of all NAs
 #'
-#' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
+#' @return Most of the original call values and a boot_reg list containing
+#' matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
 #' of the associated estimator; see brett_plot() and create_error_bars().
@@ -937,18 +961,30 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 
 #' @title brett_plot
 #'
-#' @description Plot smoothed histograms of regression effects for a given topic.  Use case 1: producing density plots of bootstrap OLS samples with respect to discrete coefficients.  That's the only time OLS will be valid anyways.
-#' Use case 2: producing quantile plots for the fitted beta distribution with respect to covariate coefficients. Works best when the coefficients are discrete or when "newdata" is provided.
+#' @description Plot smoothed histograms of regression effects for a given topic.
+#'   Use case 1: producing density plots of bootstrap OLS samples with respect to
+#'   discrete coefficients.  That's the only time OLS will be valid anyways.
+#' Use case 2: producing quantile plots for the fitted beta distribution with
+#' respect to covariate coefficients. Works best when the coefficients are discrete
+#' or when "newdata" is provided.
 #'
-#' @param brett_object A list of bootstrap samples, as produced by boot_reg() or model coefficients from get_regression_coefficients()
+#' @param brett_object A list of bootstrap samples, as produced by boot_reg() or
+#' model coefficients from get_regression_coefficients()
 #'
 #' @param topic The topic to use as the response variable, labeled by its anchor word.
 #'
-#' @param newdata provided if the bootsamples are regression coefficients and we wish to plot the fitted values at 'newdata' points.  newdata should be a data.frame where the N rows are N new observations with values across the columns.  The rownames are used for plotting as appropriate.
+#' @param newdata provided if the bootsamples are regression coefficients and we
+#' wish to plot the fitted values at 'newdata' points.  newdata should be a data.frame where the N rows are N new observations with values across the columns.  The rownames are used for plotting as appropriate.
 #'
-#' @param Model Used if 'boot_samples' is not from boot_reg and therefore doesn't contain the model information already.  Used if newdata is supplied so that the function knows how to convert the bootstrap samples into predictions at 'newdata' points.  WILL BE REMOVED IN FUTURE
+#' @param Model Used if 'boot_samples' is not from boot_reg and therefore doesn't
+#' contain the model information already.  Used if newdata is supplied so that the
+#' function knows how to convert the bootstrap samples into predictions at 'newdata'
+#' points.  MAY BE REMOVED IN FUTURE
 #'
-#' @param link Used if 'boot_samples' is not from boot_reg and therefore doesn't contain the model information already.  Used if newdata is supplied so that the function knows how to convert the bootstrap samples into predictions at 'newdata' points.  WILL BE REMOVED IN FUTURE
+#' @param link Used if 'boot_samples' is not from boot_reg and therefore doesn't
+#' contain the model information already.  Used if newdata is supplied so that the
+#' function knows how to convert the bootstrap samples into predictions at 'newdata'
+#' points.  MAY BE REMOVED IN FUTURE
 #'
 #' @param from_stm logical hack so that the same plots from can be made from the output of STM
 #'
@@ -970,11 +1006,10 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #' brett_object1 <- boot_reg(my_output, 100, Model = "OLS", topics=c("death", "love"))
 #' brett_plot(brett_object1, topic="death")
 #'
-#' brett_objectBF = get_regression_coefs(my_output, Model = "BETA", return_just_coefs = FALSE, topics=c("death", "love"))
+#' brett_objectBF = get_regression_coefs(my_output, Model = "BETA",
+#'   return_just_coefs = FALSE, topics=c("death", "love"))
 #' brett_plot(brett_objectBF, topic="death")
 #'
-#' brett_objectBT = get_regression_coefs(my_output, Model = "BETA", return_just_coefs = TRUE, topics=c("death", "love"))
-#' brett_plot(brett_objectBT, topic="death")
 #'
 #'
 #' @export
@@ -992,7 +1027,7 @@ brett_plot = function(brett_object,
   # eventually loop this.
   if(inherits(brett_object,"list")){
     # could be OLS or BETA, with return_just_coefs = FALSE
-    if(is.null(brett_objectBF$boot_reg)){
+    if(is.null(brett_object$boot_reg)){
       # didn't just return the coefs, so plot quantiles,
       boot_reg_list <- brett_object
       bootstrapped <- from_stm
@@ -1235,12 +1270,14 @@ brett_plot = function(brett_object,
 
 #' @title Create Error Bars for Bootstrap Inference
 #'
-#' @description Produce a data frame with two-sided, 95% confidence intervals based on bootstrap estimates of
+#' @description Produce a data frame with two-sided, 95% confidence intervals
+#' based on bootstrap estimates of
 #' sampling distributions.
 #'
 #' @param brett_object A list of bootstrap samples, as produced by boot_reg().
 #'
-#' @param topicvector the selected topic(s) of interest for inference, default is all topics, though this is often too much output to be useful.
+#' @param topicvector the selected topic(s) of interest for inference, default
+#' is all topics, though this is often too much output to be useful.
 #'
 #' @param coverage the level of coverage for the interval, default is 95%
 #'

@@ -247,7 +247,8 @@ get_reconstruction_error = function(output, input, Ntopics = ncol(output$phi)){
   # find the indices of the anchors from the original data vocabulary
 
 
-  frobeniusnorm <- data.frame(topics = 0:Ntopics,Frobenius_norm = rep(NA, Ntopics+1))
+  frobeniusnorm <- data.frame(topics = 0:Ntopics,
+                              Frobenius_norm = rep(NA, Ntopics+1))
   docs_2_keep <- which(output$sum_theta_over_docs>0)
   rownames(input$tdm) <- input$vocab
   rownames(output$phi) <- output$vocab
