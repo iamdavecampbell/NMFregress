@@ -1,6 +1,6 @@
 #' Extract the Regression Coefficients
 #'
-#' Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
+#' @description Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
 #' weight. Estimates are produced simultaneously for all topics.
 #'
 #' @param output An object of class nmf_output.
@@ -507,6 +507,7 @@ get_regression_coefs = function(output,
     }# end of model choice
     }# end of obs weights
   ##### return
+  class(beta) = c("BRETT_ouput",class(beta))
   return(beta)
 }
 
@@ -540,7 +541,7 @@ get_regression_coefs = function(output,
 #' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
-#' of the associated estimator; see boot_plot() and create_error_bars().
+#' of the associated estimator; see brett_plot() and create_error_bars().
 #'
 #' @import dplyr
 #' @importFrom stats as.formula coefficients predict quantile weights
@@ -674,18 +675,18 @@ boot_reg = function(output, samples,
   }
 
   ##### return
-
-  return(list(boot_reg =to_return,
-              obs_weights = obs_weights,
-              Model = Model,
-              return_just_coefs = return_just_coefs,
-              formula = formula,
-              link     = ifelse(Model == "OLS", NA, link),
-              link.phi = ifelse(Model == "OLS", NA, link.phi),
-              type = ifelse(Model == "BETA",type, NA),
-              topics = topics,
-              na.rm = na.rm)
-      )
+  toreturn = list(boot_reg =to_return,
+                  obs_weights = obs_weights,
+                  Model = Model,
+                  return_just_coefs = return_just_coefs,
+                  formula = formula,
+                  link     = ifelse(Model == "OLS", NA, link),
+                  link.phi = ifelse(Model == "OLS", NA, link.phi),
+                  type = ifelse(Model == "BETA",type, NA),
+                  topics = topics,
+                  na.rm = na.rm)
+  class(toreturn) = c("BRETT_ouput", "list")
+  return(toreturn)
 }
 
 
@@ -722,7 +723,7 @@ boot_reg = function(output, samples,
 #' @return Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
 #' get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
 #' particular element across bootstrap iterates estimates the sampling distribution
-#' of the associated estimator; see boot_plot() and create_error_bars().
+#' of the associated estimator; see brett_plot() and create_error_bars().
 #'
 #' @import dplyr
 #' @importFrom stats as.formula coefficients predict quantile weights
@@ -916,7 +917,7 @@ boot_reg_stratified = function(output, samples, parallel = 4,
     }
   }
   ##### return
-  return(list(boot_reg =to_return,
+  toreturn=list(boot_reg =to_return,
                   obs_weights = obs_weights,
                   Model = Model,
                   return_just_coefs = return_just_coefs,
@@ -927,19 +928,19 @@ boot_reg_stratified = function(output, samples, parallel = 4,
                   topics = topics,
                   na.rm = na.rm,
                   type = "stratified bootstrap")
-        )
-
-
+  class(toreturn) = c("BRETT_ouput","list")
+  return(toreturn)
 }
 
 
 
 
-#' @title boot_plot
+#' @title brett_plot
 #'
-#' @description Plot smoothed histograms of regression effects for a given topic.
+#' @description Plot smoothed histograms of regression effects for a given topic.  Use case 1: producing density plots of bootstrap OLS samples with respect to discrete coefficients.  That's the only time OLS will be valid anyways.
+#' Use case 2: producing quantile plots for the fitted beta distribution with respect to covariate coefficients. Works best when the coefficients are discrete or when "newdata" is provided.
 #'
-#' @param boot_samples A list of bootstrap samples, as produced by boot_reg().
+#' @param brett_object A list of bootstrap samples, as produced by boot_reg() or model coefficients from get_regression_coefficients()
 #'
 #' @param topic The topic to use as the response variable, labeled by its anchor word.
 #'
@@ -966,40 +967,48 @@ boot_reg_stratified = function(output, samples, parallel = 4,
 #'                         topics = 10,
 #'                         covariates = acts)
 #' my_output <- solve_nmf(my_input)
-#' boot_samples <- boot_reg(my_output, 100, Model = "OLS")
-#' boot_plot(boot_samples, topic="death")
+#' brett_object1 <- boot_reg(my_output, 100, Model = "OLS", topics=c("death", "love"))
+#' brett_plot(brett_object1, topic="death")
+#'
+#' brett_objectBF = get_regression_coefs(my_output, Model = "BETA", return_just_coefs = FALSE, topics=c("death", "love"))
+#' brett_plot(brett_objectBF, topic="death")
+#'
+#' brett_objectBT = get_regression_coefs(my_output, Model = "BETA", return_just_coefs = TRUE, topics=c("death", "love"))
+#' brett_plot(brett_objectBT, topic="death")
+#'
 #'
 #' @export
-boot_plot = function(boot_samples,
+brett_plot = function(brett_object,
                      topic,
                      newdata=NULL,
                      Model = NULL,
                      link = NULL,
                      from_stm = FALSE){
-
-  ##### check inputs
-  if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
-    # print("looks like output from get_regression_coefs")
-    # print("might eventually make boot_reg a class to fix this ad hoc handling")
-    # if boot_samples comes from get_regression_coefs
-    boot_reg_list <- boot_samples
-    bootstrapped <- from_stm
-    if("gam" %in% class(boot_reg_list[[topic]])){
-      Model = "GAM"
-    }
-  }else{
-    # if boot_samples comes from boot_reg
-    boot_reg_list <- boot_samples$boot_reg
-    Model         <- boot_samples$Model
-    link          <- boot_samples$link
+  ##### check input types
+  if(!inherits(brett_object,"BRETT_ouput")){
+    stop("Input must be an object of class nmf_input.")
+  }
+  stopifnot("one topic at a time please" = length(topic)==1)
+  # eventually loop this.
+  if(inherits(brett_object,"list")){
+    # could be OLS or BETA, with return_just_coefs = FALSE
+    if(is.null(brett_objectBF$boot_reg)){
+      # didn't just return the coefs, so plot quantiles,
+      boot_reg_list <- brett_object
+      bootstrapped <- from_stm
+      if("gam" %in% class(boot_reg_list[[topic]])){
+        # check if GAM or Beta regression was used.
+        Model = "GAM"
+      }
+   }else{
+    # if brett_object is a bootstrap object using OLS or BETA
+    boot_reg_list <- brett_object$boot_reg
+    Model         <- brett_object$Model
+    link          <- brett_object$link
     bootstrapped <- TRUE
+   }
   }
 
-
-  if(!(is.list(boot_samples))){
-    stop("boot_samples must be a list of vectors/matrices, as output by
-              boot_reg() or get_regression_coefs().")
-  }
   if(bootstrapped & !(topic %in% row.names(boot_reg_list[[1]]))){
     stop("Topic not among the anchor words.")
   }
@@ -1010,7 +1019,7 @@ boot_plot = function(boot_samples,
   if( is.null(newdata)){
     # if   = Using betaregression at the observation points
     # else = Just plot the effects not fits.
-    if(any(class(boot_reg_list[[topic]])=="betareg")){
+    if(inherits(boot_reg_list[[topic]],"betareg")){
 
       # want to plot data fit at "newdata"
       # Beta regression model was used
@@ -1072,7 +1081,7 @@ boot_plot = function(boot_samples,
         ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
         ggplot2::labs(title = paste("Bootstrap Distribution of Coefficients: Topic =", stringr::str_to_title(topic)),
                       x = "P(topic|X)",#expression(beta),
-                      y = stringr::str_to_title(attributes(dimnames(boot_samples[[1]]))[[1]][2]))
+                      y = stringr::str_to_title(attributes(dimnames(brett_object[[1]]))[[1]][2]))
 
 
     }
@@ -1229,7 +1238,7 @@ boot_plot = function(boot_samples,
 #' @description Produce a data frame with two-sided, 95% confidence intervals based on bootstrap estimates of
 #' sampling distributions.
 #'
-#' @param boot_samples A list of bootstrap samples, as produced by boot_reg().
+#' @param brett_object A list of bootstrap samples, as produced by boot_reg().
 #'
 #' @param topicvector the selected topic(s) of interest for inference, default is all topics, though this is often too much output to be useful.
 #'
@@ -1247,30 +1256,30 @@ boot_plot = function(boot_samples,
 #'                         topics = 10,
 #'                         covariates = acts)
 #' my_output = solve_nmf(my_input)
-#' boot_samples = boot_reg(my_output, samples = 100, Model = "OLS")
-#' create_error_bars(boot_samples, topicvector = "death")
+#' brett_object = boot_reg(my_output, samples = 100, Model = "OLS")
+#' create_error_bars(brett_object, topicvector = "death")
 #'
 #' out_model = get_regression_coefs(my_output, Model = "BETA")
-#' create_error_bars(boot_samples = out_model, topicvector = "death")
+#' create_error_bars(brett_object = out_model, topicvector = "death")
 #'
 #' @export
-create_error_bars = function(boot_samples, topicvector = NULL, coverage = .95){
+create_error_bars = function(brett_object, topicvector = NULL, coverage = .95){
   ##### check inputs
-  if(!(is.list(boot_samples))){
-    stop("boot_samples must be a list of matrices, as outputted by
+  if(!(is.list(brett_object))){
+    stop("brett_object must be a list of matrices, as outputted by
               boot_reg() or get_regression_coefs.")
   }
-  if(is.list(boot_samples) & is.null(boot_samples$boot_reg)){
+  if(is.list(brett_object) & is.null(brett_object$boot_reg)){
     # print("looks like output from get_regression_coefs")
     # print("might eventually make boot_reg a class to fix this ad hoc handling")
-    # if boot_samples comes from get_regression_coefs
-    boot_reg_list <- boot_samples
+    # if brett_object comes from get_regression_coefs
+    boot_reg_list <- brett_object
   }else{
-    # if boot_samples comes from boot_reg
-    boot_reg_list <- boot_samples$boot_reg
+    # if brett_object comes from boot_reg
+    boot_reg_list <- brett_object$boot_reg
   }
   if(!(is.matrix(boot_reg_list[[1]]))){
-    stop("boot_samples must be a list of matrices, as outputted by
+    stop("brett_object must be a list of matrices, as outputted by
               boot_reg(). This function does not yet support large design matrices.")
   }
   if(!(0 < coverage & coverage < 1)){
