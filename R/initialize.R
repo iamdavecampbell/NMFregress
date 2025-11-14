@@ -34,7 +34,6 @@
 #'
 #' @return Object of class nmf_input. This contains all the information needed
 #' to solve the NMF problem as provided by the function's arguments
-
 #'
 #' @examples my_input = create_input(Romeo_and_Juliet_tdm,
 #'    rownames(Romeo_and_Juliet_tdm),
@@ -88,11 +87,11 @@ create_input <- function(tdm,
 
   ##### return object of class nmf_input
   to_return <- list(tdm = tdm,
-                   vocab = vocab,
-                   topics = topics,
-                   project = project,
-                   proj_dim = proj_dim,
-                   covariates = covariates)
+                    vocab = vocab,
+                    topics = topics,
+                    project = project,
+                    proj_dim = proj_dim,
+                    covariates = covariates)
   class(to_return) <- "nmf_input"
   return(to_return)
 }

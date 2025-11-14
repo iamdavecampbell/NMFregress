@@ -9,7 +9,8 @@ The text as a term document matrix with covariates}
 ## `vector`
 A vector with 788 elements
 \describe{
-  \item{values}{Continuous conversion of line number as a fraction of the way through each act.}
+  \item{values}{Continuous conversion of line number as a fraction of the
+        way through each act.}
   ...
 }
 }

@@ -28,7 +28,9 @@ Imports:
     prodlim,
     reshape2,
     stats,
-    stringr
+    stringr,
+    tibble,
+    tidyr
 Description: Performs Topic Model Decomposition of a text corpus and allows regression effects and hypothesis tests on covariates.
 Depends: R (>= 4.1.0)
 License: GPL (>= 3)
@@ -37,5 +39,6 @@ LazyData: true
 RoxygenNote: 7.3.3
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown,
+    ggpubr
 VignetteBuilder: knitr

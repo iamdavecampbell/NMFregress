@@ -2,8 +2,8 @@
 
 export(boot_reg)
 export(boot_reg_stratified)
+export(bootstrap_error_bars)
 export(brett_plot)
-export(create_error_bars)
 export(create_input)
 export(get_lambda)
 export(get_reconstruction_error)

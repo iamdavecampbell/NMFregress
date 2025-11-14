@@ -7,7 +7,7 @@
 get_regression_coefs(
   output,
   obs_weights = NULL,
-  Model = c("BETA", "GAM", "OLS"),
+  model = c("BETA", "GAM", "OLS"),
   return_just_coefs = TRUE,
   formula = NULL,
   link = "logit",
@@ -20,31 +20,44 @@ get_regression_coefs(
 \arguments{
 \item{output}{An object of class nmf_output.}
 
-\item{obs_weights}{Weights for the documents, as used by weighted least squares. Defaults to null.}
+\item{obs_weights}{Weights for the documents, as used by weighted least
+squares. Defaults to null.}
 
-\item{Model}{choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".   OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs}
+\item{model}{choose c("BETA", "GAM", "OLS") for OLS, beta regression or a
+Generalized Additive model with family beta.  Default is "BETA".   OLS is
+only useful if the covariates are categorical, to be passed to
+get_regression_coefs}
 
-\item{return_just_coefs}{is a logical, if TRUE then just return the coefficients, if FALSE, then return the output from the lm or betareg function.}
+\item{return_just_coefs}{is a logical, if TRUE then just return the
+coefficients, if FALSE, then return the output from the lm or betareg
+function.}
 
-\item{formula}{is the formula to be passed into betareg or GAM.  With betaregression, formula has the form Y~ model+for+mean | model+for+dispersion}
+\item{formula}{is the formula to be passed into betareg or GAM.  With
+betaregression, formula has the form Y~ model+for+mean | model+for+dispersion}
 
-\item{link}{is the link function for the GLM for the mean when using betaregression or GAM.}
+\item{link}{is the link function for the GLM for the mean when using
+betaregression or GAM.}
 
-\item{link.phi}{is the link function for the GLM for the precision when using betaregression.}
+\item{link.phi}{is the link function for the GLM for the precision when using
+betaregression.}
 
-\item{type}{is one of ML, BC, BR for betaregression to use Maximum Likelihood, Bias Corrected, or Bias Reduced respectively}
+\item{type}{is one of ML, BC, BR for betaregression to use Maximum
+Likelihood, Bias Corrected, or Bias Reduced respectively}
 
-\item{topics}{which topics should be used.   If empty, then all of them are used.}
+\item{topics}{which topics should be used. If empty, then all of them are
+used.}
 
-\item{na.rm}{remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs}
+\item{na.rm}{remove the problematic 'no topic' documents now so that we don't
+end up with a bootstrap sample of all NAs}
 }
 \value{
-A matrix of regression coefficients (named if column names have been specified
-for the design matrix).
+A matrix of regression coefficients (named if column names have been
+specified for the design matrix).
 }
 \description{
-Compute OLS coefficients, fitting a linear model between a user's specified covariates and topic
-weight. Estimates are produced simultaneously for all topics.
+Compute OLS coefficients, fitting a linear model between a
+user's specified covariates and topic weight. Estimates are produced
+simultaneously for all topics.
 }
 \examples{
 my_input <- create_input(Romeo_and_Juliet_tdm,
@@ -52,6 +65,7 @@ my_input <- create_input(Romeo_and_Juliet_tdm,
                         topics = 10,
                         covariates = acts)
 my_output <- solve_nmf(my_input)
-get_regression_coefs(my_output, Model = "BETA")
+get_regression_coefs(my_output, model = "BETA")
+
 
 }

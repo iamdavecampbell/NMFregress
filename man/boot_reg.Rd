@@ -2,13 +2,13 @@
 % Please edit documentation in R/inf_functions.R
 \name{boot_reg}
 \alias{boot_reg}
-\title{boot_reg}
+\title{Bootstrap Regression}
 \usage{
 boot_reg(
   output,
   samples,
   obs_weights = NULL,
-  Model = c("BETA", "GAM", "OLS"),
+  model = c("BETA", "GAM", "OLS"),
   return_just_coefs = TRUE,
   topics = NULL,
   formula = NULL,
@@ -21,34 +21,50 @@ boot_reg(
 \arguments{
 \item{output}{An object of class nmf_output}
 
-\item{samples}{The number of bootstrap samples to use. If set to 1 then return the full regression model output.  If >1, then collect the coefficients for bootstrap.}
+\item{samples}{The number of bootstrap samples to use. If set to 1
+then return the full regression model output.  If >1, then collect the
+coefficients for bootstrap.}
 
-\item{obs_weights}{weights for observations to be passed to get_regression_coefs}
+\item{obs_weights}{weights for observations to be passed to
+get_regression_coefs}
 
-\item{Model}{choose c("BETA", "GAM", "OLS") for OLS, beta regression or a Generalized Additive model with family beta.  Default is "BETA".  OLS is only useful if the covariates are categorical, to be passed to get_regression_coefs}
+\item{model}{choose c("BETA", "GAM", "OLS") for OLS, beta regression or a
+Generalized Additive model with family beta.  Default is "BETA".
+OLS is only useful if the covariates are categorical, to be
+passed to get_regression_coefs}
 
-\item{return_just_coefs}{returns the coefficients as opposed to the full betaregression output to be passed to get_regression_coefs}
+\item{return_just_coefs}{returns the coefficients as opposed to the full
+betaregression output to be passed to get_regression_coefs}
 
-\item{topics}{is a vector of the subset of topics of interest.  Default is to perform regression on all topics.}
+\item{topics}{is a vector of the subset of topics of interest.  Default is to
+perform regression on all topics.}
 
-\item{formula}{of the form Y = X |Z  for the model E(Y) = XB for the mean and var(Y)=Zß for the precision to be passed to get_regression_coefs}
+\item{formula}{of the form Y = X |Z  for the model E(Y) = XB for the mean and
+var(Y)=Zß for the precision to be passed to get_regression_coefs}
 
-\item{link}{is the link function for the betaregression GLM to be passed to get_regression_coefs or when using GAM}
+\item{link}{is the link function for the betaregression GLM to be passed to
+get_regression_coefs or when using GAM}
 
-\item{link.phi}{is the link function for the precision to be passed to get_regression_coefs, only for betaregression}
+\item{link.phi}{is the link function for the precision to be passed to
+get_regression_coefs, only for betaregression}
 
-\item{type}{is one of ML, BR, BC for maximum likelihood, bias reduces, or bias corrected estimates to be passed to get_regression_coefs}
+\item{type}{is one of ML, BR, BC for maximum likelihood, bias reduces, or
+bias corrected estimates to be passed to get_regression_coefs}
 
-\item{na.rm}{remove the problematic 'no topic' documents now so that we don't end up with a bootstrap sample of all NAs}
+\item{na.rm}{remove the problematic 'no topic' documents now so that we don't
+end up with a bootstrap sample of all NAs}
 }
 \value{
-Most of the original call values and a boot_reg list containing matrices/vectors, each of which contains regression coefficients produced by
-get_regression_coefs(). Each list element corresponds to a bootstrap sample. Combining a
-particular element across bootstrap iterates estimates the sampling distribution
-of the associated estimator; see boot_plot() and create_error_bars().
+Most of the original call values and a boot_reg list containing
+matrices/vectors, each of which contains regression coefficients produced by
+get_regression_coefs(). Each list element corresponds to a bootstrap sample.
+Combining a particular element across bootstrap iterates estimates the
+sampling distribution of the associated estimator; see brett_plot() and
+create_error_bars().
 }
 \description{
-Bootstrap regression coefficients in order to estimate their sampling distribution.
+Bootstrap regression coefficients in order to
+estimate their sampling distribution.
 }
 \examples{
 my_input <- create_input(Romeo_and_Juliet_tdm,
@@ -56,6 +72,9 @@ my_input <- create_input(Romeo_and_Juliet_tdm,
                         topics = 10,
                         covariates = acts)
 my_output <- solve_nmf(my_input)
-boot_samples = boot_reg(my_output, samples = 100, Model = "OLS")
+boot_samples = boot_reg(my_output, samples = 100, model = "OLS")
 
+}
+\seealso{
+[boot_reg_stratified()]
 }

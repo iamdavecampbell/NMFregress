@@ -13,7 +13,8 @@ get_lambda(output)
 A data frame of the anchor words and the inverse lambda (lambdacrit)
 }
 \description{
-Extracts the inverse lambdas and matches them to the anchor words.
+Extracts the inverse lambdas and matches them to the
+anchor words.
 }
 \examples{
 my_input = create_input(Romeo_and_Juliet_tdm,

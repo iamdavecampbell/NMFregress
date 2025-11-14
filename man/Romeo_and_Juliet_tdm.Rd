@@ -9,9 +9,11 @@ The text as a term document matrix with covariates}
 ## `matrix`
 A matrix with 2997 rows and  788 columns:
 \describe{
-  \item{rows}{unique terms, sorted alphabetically, as defined by the row labels. Terms have been filtered to remove stopwords}
+  \item{rows}{unique terms, sorted alphabetically, as defined by the row
+  labels. Terms have been filtered to remove stopwords}
   \item{columns}{Each column is one line of the play}
-  \item{elements}{Counts of occurence of each term within each line of the play.}
+  \item{elements}{Counts of occurence of each term within each line
+  of the play.}
 }
 }
 \source{

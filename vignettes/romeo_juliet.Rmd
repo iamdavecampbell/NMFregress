@@ -46,7 +46,7 @@ The Term Document matrix for Romeo and Juliet has already been built with row la
 
 ```{r}
 dim(Romeo_and_Juliet_tdm)
-
+# a block from the TDM
 Romeo_and_Juliet_tdm[312:318, 184:193]
 ```
 
@@ -54,11 +54,11 @@ That's it! Now prepare for NMF by gathering the components to creates an object 
 
 ```{r}
 
-my_input = create_input(Romeo_and_Juliet_tdm, 
-                        vocab = rownames(Romeo_and_Juliet_tdm), 
-                        covariates = acts, 
-                        topics = 25)
-my_input|> names()
+my_input <- create_input(Romeo_and_Juliet_tdm,
+                         vocab = rownames(Romeo_and_Juliet_tdm),
+                         covariates = acts,
+                         topics = 25)
+my_input |> names()
 ```
 
 
@@ -67,7 +67,7 @@ my_input|> names()
 Since `my_input` contains (nearly) all the information the solver needs, we now simply put 
 
 ```{r, results="hide"}
-my_output = solve_nmf(my_input)
+my_output <- solve_nmf(my_input)
 ```
 
 The resulting `my_output` is a class `nmf_output` object containing $\phi$ (the word-topic matrix), $\theta$ (the topic-document matrix), the anchor words, and some relevant information from `my_input` that the inference functions will need to do their thing:
@@ -88,11 +88,11 @@ print_top_words(my_output, n = 10)
 Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distortion. But, for large matrices this is a really nice option; we'd specify something like this code (shown for example but won't be used elsewhere.)
 
 ```{r}
-my_input2 = create_input(Romeo_and_Juliet_tdm,
-                        vocab = rownames(Romeo_and_Juliet_tdm), 
-                        covariates = acts, 
-                        topics = 25)
-my_output2 = solve_nmf(my_input2)
+my_input2 <- create_input(Romeo_and_Juliet_tdm,
+                          vocab = rownames(Romeo_and_Juliet_tdm),
+                          covariates = acts,
+                          topics = 25)
+my_output2 <- solve_nmf(my_input2)
 ```
 
 which tells the solver we'd like to project down to 200 dimensions to find the anchor words and likewise for solving the non-negative least squares problems that constitute convex NMF. It's up to you to get these dimensions right -- that is, ensuring that they are actually smaller than the input dimension (which is the number of columns in the TDM). For some context, we've solved NMF for matrices of size ~ 10,000 x 6,000 in a matter of minutes with very good results. Again, this is down to the data as well -- the more signal your TDM carries, the better these projections will work. 
@@ -105,7 +105,7 @@ One may be interested in selecting the number of topics.  The right way to do th
 Sometimes it is helpful to see how additional topics assist with the reconstruction error of the original TDM.   The `get_reconstruction_error` function calculates the Frobenius norm of reconstruction, $||X- \phi_t\theta_t||$, based on $t\in {1,2,...T}$ topics.  
 
 ```{r}
-reconstruction_error = get_reconstruction_error(my_output, my_input)
+reconstruction_error <- get_reconstruction_error(my_output, my_input)
 reconstruction_error
 ```
 
@@ -122,7 +122,7 @@ The interpretation of performing regression on something akin to a probabilistic
  Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run:
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE }
-OLS_bootstrap = boot_reg(my_output, samples = 1000, model = "OLS")
+OLS_bootstrap <- boot_reg(my_output, samples = 1000, model = "OLS")
 
 # Test the input of a subset of topics
 ```
@@ -137,24 +137,30 @@ Note that we ran a model where act 1 was the baseline, so if all other effects a
 ```{r, message = FALSE}
 # plot the raw OLS coefficients:
 
-ols_boot_juliet = brett_plot(OLS_bootstrap, "juliet") 
-ols_boot_dead   = brett_plot(OLS_bootstrap, "dead")
-ggpubr::ggarrange(ols_boot_juliet, ols_boot_dead, 
-          ncol = 1, nrow = 2)
+ols_boot_juliet <- brett_plot(OLS_bootstrap, "juliet")
+ols_boot_dead   <- brett_plot(OLS_bootstrap, "dead")
+ggpubr::ggarrange(ols_boot_juliet, ols_boot_dead,
+                  ncol = 1, nrow = 2)
 
-# or plot the model fit by including new data at which to evaluate the OLS model:
-newdata = my_output$covariates|> unique()
-rownames(newdata) = c("act1","act2","act3","act4","act5")
+# or plot the model fit by including
+# new data at which to evaluate the OLS model:
+newdata <- my_output$covariates |> unique()
+# rownames are used as labels for the new data values for the plots when
+# new data is included.
+rownames(newdata) <- c("act1", "act2", "act3", "act4", "act5")
 
-ols_fit_juliet = brett_plot(OLS_bootstrap, "juliet", newdata) 
-ols_fit_dead   = brett_plot(OLS_bootstrap, "dead", newdata)
-ggpubr::ggarrange(ols_fit_juliet, ols_fit_dead, 
-          ncol = 1, nrow = 2)
 
-create_error_bars(OLS_bootstrap, topic = c("dead"))|>
-    dplyr::mutate(
-      dplyr::across(where(is.numeric), ~round(.,digits =4))
-      )
+ols_fit_juliet <- brett_plot(OLS_bootstrap, "juliet", newdata)
+ols_fit_dead   <- brett_plot(OLS_bootstrap, "dead", newdata)
+ggpubr::ggarrange(ols_fit_juliet,
+                  ols_fit_dead,
+                  ncol = 1, nrow = 2)
+
+bootstrap_error_bars(OLS_bootstrap,
+                     topicvector = c("dead")) |>
+  dplyr::mutate(
+    dplyr::across(where(is.numeric), ~round(., digits = 4))
+    )
 
 ```
 
@@ -170,45 +176,67 @@ First we swap out the covariates from the setup so that we run the model of inte
 ```{r, message = FALSE, warning=FALSE, results = FALSE}
 
 # just the model without bootstrap
-beta_asymptotic = get_regression_coefs(my_output, 
-                           model = "BETA", 
-                           return_just_coefs = FALSE,
-                           topics = c("night","love","juliet", "death", "dead"))
+beta_asymptotic <- get_regression_coefs(my_output,
+                                        model = "BETA",
+                                        return_just_coefs = FALSE,
+                                        topics = c("night",
+                                                   "love",
+                                                   "juliet",
+                                                   "death",
+                                                   "dead"))
 
 # to do full bootstrap:
-beta_boot = boot_reg(my_output, 
-                           samples = 100, model = "BETA", 
-                           return_just_coefs = TRUE,
-                           topics = c("night","love","juliet", "death", "dead"))
+beta_boot <- boot_reg(my_output,
+                      samples = 100, model = "BETA",
+                      return_just_coefs = TRUE,
+                      topics = c("night",
+                                 "love",
+                                 "juliet",
+                                 "death",
+                                 "dead"))
 
-
-beta_asymptotic_juliet = brett_plot(beta_asymptotic, "juliet")
-beta_asymptotic_dead   = brett_plot(beta_asymptotic, "dead")
-ggpubr::ggarrange(beta_asymptotic_juliet, beta_asymptotic_dead, 
-          ncol = 1, nrow = 2)
+beta_asymptotic_juliet <- brett_plot(beta_asymptotic, "juliet")
+beta_asymptotic_dead   <- brett_plot(beta_asymptotic, "dead")
+ggpubr::ggarrange(beta_asymptotic_juliet,
+                  beta_asymptotic_dead,
+                  ncol = 1, nrow = 2)
 # or include new observations for the model:
-newdata = my_output$covariates|> unique()
-rownames(newdata) = c("act1","act2","act3","act4","act5")
+newdata <- my_output$covariates |> unique()
+rownames(newdata) <- c("act1",
+                       "act2",
+                       "act3",
+                       "act4",
+                       "act5")
 
-beta_asymptotic_juliet_newdata = brett_plot(beta_asymptotic, "juliet", newdata = newdata)
-beta_asymptotic_dead_newdata   = brett_plot(beta_asymptotic, "dead"  , newdata = newdata)
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_asymptotic_dead_newdata, 
-          ncol = 1, nrow = 2)
+beta_asymptotic_juliet_newdata <- brett_plot(beta_asymptotic,
+                                             topic = "juliet",
+                                             newdata = newdata)
+beta_asymptotic_dead_newdata <- brett_plot(beta_asymptotic,
+                                           topic = "dead",
+                                           newdata = newdata)
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
+                  beta_asymptotic_dead_newdata,
+                  ncol = 1, nrow = 2)
 
-
-beta_boot_juliet = brett_plot(beta_boot, "juliet")
-beta_boot_dead   = brett_plot(beta_boot, "dead")
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,
-          beta_asymptotic_dead_newdata, beta_boot_dead,
-          ncol = 2, nrow = 2)
+beta_boot_juliet <- brett_plot(beta_boot, "juliet")
+beta_boot_dead   <- brett_plot(beta_boot, "dead")
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
+                  beta_boot_juliet,
+                  beta_asymptotic_dead_newdata,
+                  beta_boot_dead,
+                  ncol = 2, nrow = 2)
 
 # or include new observations for the model:
-beta_boot_juliet_newdata = brett_plot(beta_boot, "juliet",newdata)
-beta_boot_dead_newdata   = brett_plot(beta_boot, "dead",newdata)
+beta_boot_juliet_newdata <- brett_plot(beta_boot, "juliet", newdata)
+beta_boot_dead_newdata   <- brett_plot(beta_boot, "dead", newdata)
 
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,beta_boot_juliet_newdata,
-          beta_asymptotic_dead_newdata, beta_boot_dead,beta_boot_dead_newdata,
-          ncol = 3, nrow = 2)
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
+                  beta_boot_juliet,
+                  beta_boot_juliet_newdata,
+                  beta_asymptotic_dead_newdata,
+                  beta_boot_dead,
+                  beta_boot_dead_newdata,
+                  ncol = 3, nrow = 2)
 ```
 
 
@@ -217,43 +245,59 @@ Model output a list of length = the number of samples.  Since we have **samples 
 
 
 ```{r}
-beta_asymptotic$death|> summary()
+beta_asymptotic$death |> summary()
 ```
 
-### Note about width of beta regression intervals:
 
-Note that when running beta regression on a small number of documents will likely include _long tails_.  Here it shows up as the .025 and .5 quantiles being close to zero, but the .975 quantile is close to 1.  With more documents, there is more information that will tighten the density around the point estimate.
+### Classic p-vales from asymptotic beta regression models
+
+Inference is produced for each model coefficient for the mean and for the
+variance terms and can be extracted using **sumary** as per the **betareg** 
+package.
+
+```{r}
+beta_asymptotic$juliet |> summary()
+beta_asymptotic$death |> summary()
+```
+
+
+
+
+### Note about the beta regression intervals compared to the OLS intervals:
+
+The Beta regression model fits the full data distribution whereas the intervals 
+from bootstrapping OLS produce intervals for the mean response.  Since 
+prediction intervals are substantially wider than confidence intervals for the
+mean, it can be misleading without clarifying the meaning.
 
 ## 6. Inference III.  Generalized Additive Model with Beta Regression
 
 This comes from the **mgcv** package using  _beta_ regression.  We need a continuous covariate so we build a univariate vector with values taken as the increments for each line within each act.
 
-```{r, message = FALSE, warning=FALSE, results = FALSE }
-# Each document is a line from the play, 
-# so let's define line number as the fraction of the way through the particular act.
+```{r, message = FALSE, warning = FALSE, results = FALSE }
+# Each document is a line from the play,
+# so let's define line number as the fraction of the way through the
+# particular act.
 #
-
-my_output$covariates = matrix(acts_continuous, ncol = 1)
-colnames(my_output$covariates) = "acts"
-beta_gam = get_regression_coefs(output = my_output, 
-                    model =  "GAM", 
-                    return_just_coefs = FALSE,
-                    topics = c("night","love","juliet", "death", "dead")
-         )
-brett_plot(beta_gam, 
-          topic = "death", 
-          newdata = data.frame(acts=1:5))
-
-
-brett_plot(beta_gam, 
-          topic = "juliet", 
-          newdata = data.frame(acts=1:5))
-
-
+my_output$covariates <- matrix(acts_continuous, ncol = 1)
+colnames(my_output$covariates) <- "acts"
+beta_gam <- get_regression_coefs(output = my_output,
+                                 model =  "GAM",
+                                 return_just_coefs = FALSE,
+                                 topics = c("night",
+                                            "love",
+                                            "juliet",
+                                            "death",
+                                            "dead"))
+brett_plot(beta_gam,
+           topic = "death",
+           newdata = data.frame(acts = 1:5))
+brett_plot(beta_gam,
+           topic = "juliet",
+           newdata = data.frame(acts = 1:5))
 ```
 
+## Spoiler Alert
 
-## Finally
-
-So `juliet`, `death`, are increasingly likely as the story moves along.
+Anyway you look at it we find that `juliet`, `death`, are increasingly likely as the story moves along.
 

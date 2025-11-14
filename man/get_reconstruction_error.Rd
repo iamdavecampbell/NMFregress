@@ -4,23 +4,26 @@
 \alias{get_reconstruction_error}
 \title{get_reconstruction_error.}
 \usage{
-get_reconstruction_error(output, input, Ntopics = ncol(output$phi))
+get_reconstruction_error(output, input, n_topics = ncol(output$phi))
 }
 \arguments{
 \item{output}{An object of class nmf_output from solve_nmf}
 
-\item{input}{all of the information passed into the original solve_nmf function}
+\item{input}{all of the information passed into the original
+solve_nmf function}
 
-\item{Ntopics}{optional, the maximum number of topics to consider}
+\item{n_topics}{optional, the maximum number of topics to consider}
 }
 \value{
-a data frame with columns 'topics' taking values from 0: Ntopics.  Note that
-zero is actually the Frobenius norm of the original TDM.  When 'topics'>0 the
-norm is applied to "reconstruction(based on # topics) - original"
+a data frame with columns 'topics' taking values from 0: n_topics.
+Note that zero is actually the Frobenius norm of the original TDM.
+When 'topics'>0 the norm is applied to
+"reconstruction(based on # topics) - original"
 }
 \description{
 Calculates the goodness of fit measure for matrix reconstruction
-The Frobenius norm is computed based on a TDM reconstructed with incrementally increasing topics
+The Frobenius norm is computed based on a TDM reconstructed with
+incrementally increasing topics
 }
 \examples{
 my_input = create_input(Romeo_and_Juliet_tdm,

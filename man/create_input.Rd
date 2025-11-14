@@ -17,39 +17,43 @@ create_input(
 \item{tdm}{A term-document matrix. This should be a standard R matrix, not a
 term-document matrix as produced by some text mining packages.}
 
-\item{vocab}{A character vector of all words appearing in the corpus. In other words,
-the entire vocabulary. Make sure the words appear in the same order as the corresponding
+\item{vocab}{A character vector of all words appearing in the corpus. Make
+sure the words appear in the same order as the corresponding
 rows in the term-document matrix.}
 
 \item{topics}{The number of topics to fit in the topic model.}
 
-\item{project}{Should a random projection be performed? If yes, random projections are used in
-two places. First, they reduce the dimensionality of the term-doducment matrix to
-assist in the finding of anchor words. Second, they are used to speed up the non-negative
-least squares problems that are needed to solve for the word-topic matrix. Defaults to false.}
+\item{project}{Should a random projection be performed? If yes,
+random projections are used in two places. First, they reduce the
+dimensionality of the term-doducment matrix to assist in the finding of
+anchor words. Second, they are used to speed up the non-negative least
+squares problems that are needed to solve for the word-topic matrix.
+Defaults to false.}
 
-\item{proj_dim}{What dimension should the random projections take? Both instances effectively
-reduce the number of documents in the corpus. Despite formal guarantees,
-experience suggests projections with as few as 100 dimensions can give good results
-for collections on the order of 10000 documents. Defaults to null.}
+\item{proj_dim}{What dimension should the random projections take?
+Both instances effectively reduce the number of documents in the corpus.
+Despite formal guarantees, experience suggests projections with as few as
+100 dimensions can give good results for collections on the order of 10000
+documents. Defaults to null.}
 
-\item{covariates}{A design matrix with at least as many rows as the tdm has columns (one for each
-document, plus any rows encoding constraints on categorical variables). Any trailing rows beyond the
-number of doucments will be interpreted as constriants. Must be of the standard R matrix type.
-Matrix columns should be named if the user wants regression coefficients named accordingly.
-Intercept column must be explicitly included if desired.}
+\item{covariates}{A design matrix with at least as many rows as the tdm has
+columns (one for each document, plus any rows encoding constraints on
+categorical variables). Any trailing rows beyond the number of doucments
+will be interpreted as constriants. Must be of the standard R matrix type.
+Matrix columns should be named if the user wants regression coefficients
+named accordingly. Intercept column must be explicitly included if desired.}
 }
 \value{
-Object of class nmf_input. This contains all the information needed to solve the
-NMF problem as provided by the function's arguments
-arguments
+Object of class nmf_input. This contains all the information needed
+to solve the NMF problem as provided by the function's arguments
 }
 \description{
-This function creates an object of class nmf_input, later passed to the solve_nmf
-function.
+This function creates an object of class nmf_input, later passed
+ to the solve_nmf function.
 }
 \examples{
-my_input = create_input(Romeo_and_Juliet_tdm, rownames(Romeo_and_Juliet_tdm),
+my_input = create_input(Romeo_and_Juliet_tdm,
+   rownames(Romeo_and_Juliet_tdm),
    topics = 10)
 
 }

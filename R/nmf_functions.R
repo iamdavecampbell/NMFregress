@@ -52,14 +52,14 @@ solve_nmf <- function(input, user_anchors = NULL) {
     #qr does the full Nvocab decomp.  This pivots any user selected anchors
     # up to the front.
     extract_order_anchors <- anchors <- union(
-           user_anchors, input$vocab[qr_tdm$pivot])[1:input$topics]
+      user_anchors, input$vocab[qr_tdm$pivot])[1:input$topics]
     anchors <- sort(anchors)
     cat("Anchors recovered -- solving nmf.\n")
   }else if (input$project == TRUE) {
     proj_mat <- matrix(stats::rnorm(input$proj_dim * ncol(input$tdm), 0, 1),
-                      nrow = input$proj_dim)
+                       nrow = input$proj_dim)
     qr_tdm <- qr(((1 / sqrt(input$proj_dim)) * proj_mat) %*% t(input$tdm),
-                LAPACK = TRUE)
+                 LAPACK = TRUE)
     extract_order_anchors <- anchors <- input$vocab[qr_tdm$pivot][
                  1:input$topics]
     anchors <- sort(anchors)
@@ -109,11 +109,9 @@ solve_nmf <- function(input, user_anchors = NULL) {
                length(selected)) * B[selected, ]
 
   } else {
-
-      ##### transpose matrices for input to nnls
-      A <- t(anchor_block)
-      B <- t(other_block)
-
+    ##### transpose matrices for input to nnls
+    A <- t(anchor_block)
+    B <- t(other_block)
   }
 
   ##### solve non-negative least squares problem for each word
@@ -293,8 +291,8 @@ get_reconstruction_error <- function(output,
               tdm_hat <- output$phi[output$vocab, 1:topic_index] %*%
                 output$theta[1:topic_index, ]
               frobeniusnorm[topic_index, "frobenius_norm"] <- norm(
-                tdm_hat[, docs_2_keep] - input$tdm[output$vocab, docs_2_keep],
-                type = "f")
+               tdm_hat[, docs_2_keep] - input$tdm[output$vocab, docs_2_keep],
+               type = "f")
   }
 
   p <- frobeniusnorm |>

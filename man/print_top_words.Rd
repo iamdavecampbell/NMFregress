@@ -12,8 +12,10 @@ print_top_words(output, n = 10)
 \item{n}{The number of words to print.}
 }
 \value{
-A list with one element for each topic. These are labeled by anchor words. Each
-list element contains the top words in that topic, printed in order of importance (largest
+A list with one element for each topic. These are labeled by anchor
+words. Each
+list element contains the top words in that topic, printed in order of
+importance (largest
 pseudo-count in the word-topic matrix.)
 }
 \description{

@@ -552,67 +552,70 @@ get_regression_coefs <- function(output,
           # let's assume that it means predicting the GAM at
           # the input covariate values.
           if(is.null(covariates|> dim())){
-            nrow_x = length(unique(covariates))
-            ncol_x = 1
+            nrow_x <- length(unique(covariates))
+            ncol_x <- 1
           }else{
-            nrow_x = nrow(unique(covariates))
-            ncol_x = ncol(unique(covariates))
+            nrow_x <- nrow(unique(covariates))
+            ncol_x <- ncol(unique(covariates))
           }
           # make a place to put the predicted values.
           beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_x)
-          if(ncol_x==1){
-            colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+          if (ncol_x == 1) {
+            colnames(beta) <- apply(pred_X_vals, 1,
+                                   function(x) {
+                                     paste0("X.",x)
+                                     })
           }else{
-            colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+            colnames(beta) = apply(pred_X_vals |> matrix(ncol = 1),
                                    1,
-                                   function(x){paste0("X.",x, collapse=".")})
+                                function(x){
+                                  paste0("X.", x, collapse = ".")
+                                  })
           }
           rownames(beta) = topics
-          for(thetaindex in 1:ncol(theta_nonzero)){
+          for (thetaindex in seq_len(theta_nonzero)) {
             fail = 1
-            while(fail!=0 & fail < 10){
+            while(fail != 0 && fail < 10) {
               tryCatch({
-                data = cbind(theta_nonzero[, thetaindex] + (fail - 1) *
+                data <- cbind(theta_nonzero[, thetaindex] + (fail - 1) *
                                min(theta_nonzero[, thetaindex]) * .5,
-                             covariates)|> as.data.frame()
-                colnames(data)  = c("y",colnames(covariates))
-                beta[thetaindex,] <- mgcv::gam(formula,
-                                            family = betar,
-                                            link = link,
-                                            data = data,
-                                            weights)|>
+                             covariates) |> as.data.frame()
+                colnames(data)  <- c("y", colnames(covariates))
+                beta[thetaindex, ] <- mgcv::gam(formula,
+                                                family = betar,
+                                                link = link,
+                                                data = data,
+                                                weights) |>
                   mgcv::predict.gam(newdata = pred_X_vals)
-                fail <- 0 # if it works, then this will break out of the while loop.
-              },# end trycatch expression,
+                fail <- 0 # if it works, then this will break out of
+                # the while loop.
+              }, # end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error = function(e){
-                fail <<-fail+1
+              error = function(e) {
+                fail <<- fail + 1
                 cat(fail)
                 cat("\n It'll be ok... Sometimes beta-type regressions fail
                     because the smallest value is too close to zero.  Let's
                     increase the smallest value and try again. \n ")},
-              finally= {# completed
-                # this was more useful when troubleshooting.
-                # Otherwise it's a lot of output when in bootstrap
-                # cat(paste("\n Completed topic", thetaindex))
+              finally = {# completed
               }
               )
             }#end while
           }# end for loop
-          if(ncol_x==1){
-            beta = rbind(beta,X_pred_vals = c(as.matrix(pred_X_vals)))
+          if(ncol_x == 1) {
+            beta = rbind(beta, X_pred_vals = c(as.matrix(pred_X_vals)))
           }
         }else{#return the whole model
           beta = list()
           for(thetaindex in 1:ncol(theta_nonzero)){
-            fail = 1
-            while(fail!=0 & fail < 10){
+            fail <- 1
+            while(fail != 0 && fail < 10) {
               tryCatch({
-                data = cbind(theta_nonzero[, thetaindex] +
+                data <- cbind(theta_nonzero[, thetaindex] +
                             (fail - 1) * min(theta_nonzero[, thetaindex]) * .5,
                             covariates) |>
                   as.data.frame()
-                colnames(data)  = c("y",colnames(covariates))
+                colnames(data)  <- c("y", colnames(covariates))
                 beta[[thetaindex]] <- mgcv::gam(formula,
                                           family = betar,
                                           link = link,
@@ -620,13 +623,15 @@ get_regression_coefs <- function(output,
                                           weights = obs_weights)
                 fail <- 0 # if it works,
                 # then this will break out of the while loop.
-              },# end trycatch expression,
+              }, # end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error = function(e){fail <<-fail+1; cat(fail);
-              cat(" It'll be ok... Sometimes beta-type regressions fail
-                  because the smallest value is too close to zero.
-                  Let's increase the smallest value and try again. \n ")},
-              finally= {# completed
+              error = function(e) {
+                fail <<- fail + 1
+                cat(fail)
+                cat(" It'll be ok... Sometimes beta-type regressions fail
+                because the smallest value is too close to zero.
+                Let's increase the smallest value and try again. \n ")},
+              finally = {# completed
                 cat(paste("\n Completed topic", thetaindex))
               }
               )
@@ -1167,7 +1172,7 @@ boot_reg_stratified <- function(output,
 #' bootstrap samples into predictions at 'newdata' points.
 #' MAY BE REMOVED IN FUTURE
 #'
-#' @param link Used if 'boot_samples' is not from boot_reg and therefore
+#' @param link Used ONLY if 'boot_samples' is not from boot_reg and therefore
 #'  doesn't contain the model information already.  Used if newdata is
 #'  supplied so that the function knows how to convert the bootstrap
 #'  samples into predictions at 'newdata' points.  MAY BE REMOVED IN FUTURE
@@ -1195,7 +1200,7 @@ boot_reg_stratified <- function(output,
 #' brett_plot(brett_object, topic = "death")
 #'
 #' brett_object = get_regression_coefs(my_output, model = "BETA",
-#'                        return_just_coefs = FALSE, topics = c("death", "love"))
+#'              return_just_coefs = FALSE, topics = c("death", "love"))
 #' brett_plot(brett_object, topic="death") +
 #'               ggplot2::coord_cartesian(ylim = c(0,5))
 #'
@@ -1220,6 +1225,7 @@ brett_plot <- function(brett_object,
       # didn't just return the coefs, so plot quantiles,
       boot_reg_list <- brett_object
       bootstrapped <- from_stm
+      model <- "BETA"
       if ("gam" %in% class(boot_reg_list[[topic]])) {
         # check if GAM or Beta regression was used.
         model <- "GAM"
@@ -1313,6 +1319,9 @@ brett_plot <- function(brett_object,
 
     }
   } else {
+    if (is.matrix(newdata)) {
+      newdata <- data.frame(newdata)
+      }
     if (bootstrapped) {
       if (model == "BETA") {
         # want to plot data fit at "newdata"
@@ -1400,6 +1409,7 @@ brett_plot <- function(brett_object,
       #not bootstrapped
       if (any(class(boot_reg_list[[1]]) == "betareg")) {
         topic_plot <- beta_distribution_plot(betamodel = boot_reg_list[[topic]],
+                                             topic = topic,
                                              newdata)
       } else {
         if (model == "GAM") {
@@ -1475,7 +1485,8 @@ brett_plot <- function(brett_object,
 #'
 #' @param coverage the level of coverage for the interval, default is 95\%
 #'
-#' @return A data frame. Each row corresponds to a covariate and the columns give the CI.
+#' @return A data frame. Each row corresponds to a covariate and the columns
+#' give the CI.
 #'
 #' @importFrom dplyr filter
 #' @importFrom stats quantile
@@ -1487,59 +1498,62 @@ brett_plot <- function(brett_object,
 #'                         topics = 10,
 #'                         covariates = acts)
 #' my_output = solve_nmf(my_input)
-#' brett_object = boot_reg(my_output, samples = 100, Model = "OLS")
-#' create_error_bars(brett_object, topicvector = "death")
-#'
-#' brett_object = get_regression_coefs(my_output, Model = "BETA", return_just_coefs = TRUE)
-#' create_error_bars(brett_object, topicvector = "death")
+#' brett_object = boot_reg(my_output, samples = 100, model = "OLS")
+#' bootstrap_error_bars(brett_object, topicvector = "death")
 #'
 #' @export
-create_error_bars = function(brett_object,
-                             topicvector = NULL,
-                             coverage = .95){
+bootstrap_error_bars <- function(brett_object,
+                                 topicvector = NULL,
+                                 coverage = .95) {
   ##### check inputs
-  if(!inherits(brett_object, "BRETT_ouput")){
+  if (!inherits(brett_object, "BRETT_ouput")) {
     stop("brett_object must be a BRETT_ouput object, as outputted by
               boot_reg() or get_regression_coefs.")
   }
-  if(!inherits(brett_object, "list")){
-    stop("to build the error bars we need the bootstrap model, rerun get_regression_coefs with the input flag return_just_coefs = FALSE")
+  if (!inherits(brett_object, "list")) {
+    stop("to build the error bars we need the bootstrap model,
+         rerun get_regression_coefs with the input flag
+         return_just_coefs = FALSE")
   }
-  if(is.null(brett_object$boot_reg)){
+  if (is.null(brett_object$boot_reg)) {
     # if brett_object comes from get_regression_coefs
     boot_reg_list <- brett_object
-  }else{
+  } else {
     # if brett_object is a list of bootstrap runs
     boot_reg_list <- brett_object$boot_reg
   }
-  if(!(is.matrix(boot_reg_list[[1]]))){
+  if (!(is.matrix(boot_reg_list[[1]]))) {
     stop("brett_object must be a list of matrices, as outputted by
               boot_reg()")
   }
-  if(!(0 < coverage & coverage < 1)){
+  if (!(0 < coverage && coverage < 1)) {
     stop("coverage must be a numerical value in the interval (0,1).")
   }
 
   ##### melt and name a data frame of samples
   sample_frame <- reshape2::melt(boot_reg_list)
   colnames(sample_frame) <- c("topic", "coef", "estimate", "sample")
-  if(!is.null(topicvector)){
+  if (!is.null(topicvector)) {
     sample_frame <- dplyr::filter(sample_frame, topic %in% topicvector)
   }
 
 
   ##### construct data frame w/ all possible covariate/topic combinations
   ##### fill with corresponding quantiles
-  error_frame <- expand.grid(unique(sample_frame$topic), unique(sample_frame$coef))
+  error_frame <- expand.grid(unique(sample_frame$topic),
+                             unique(sample_frame$coef))
   names(error_frame) <- c("topic", "coef")
-  for(i in 1:nrow(error_frame)){
+  for (i in seq_len(nrow(error_frame))) {
     subset_frame <- sample_frame[sample_frame$topic == error_frame$topic[i] &
-                                   sample_frame$coef == error_frame$coef[i],]
-    error_frame$lower[i]  <- stats::quantile(subset_frame$estimate, (1-coverage)/2)
-    error_frame$median[i] <- stats::quantile(subset_frame$estimate, .5)
-    error_frame$upper[i]  <- stats::quantile(subset_frame$estimate, coverage + (1 - coverage)/2)
+                                   sample_frame$coef == error_frame$coef[i], ]
+    error_frame$lower[i]  <- stats::quantile(subset_frame$estimate,
+                                             (1 - coverage) / 2)
+    error_frame$median[i] <- stats::quantile(subset_frame$estimate,
+                                             .5)
+    error_frame$upper[i]  <- stats::quantile(subset_frame$estimate,
+                                             coverage + (1 - coverage) / 2)
   }
-  colnames(error_frame)[c(3,5)] <- paste0(c("lower","upper"),coverage)
+  colnames(error_frame)[c(3, 5)] <- paste0(c("lower", "upper"), coverage)
   ##### return
   return(error_frame)
 }
@@ -1564,6 +1578,7 @@ create_error_bars = function(brett_object,
 #' @importFrom dplyr mutate
 #' @importFrom ggplot2 geom_ribbon ggplot geom_line labs
 #'
+#'
 #' @examples
 #' my_input <- create_input(Romeo_and_Juliet_tdm,
 #'                         rownames(Romeo_and_Juliet_tdm),
@@ -1575,46 +1590,45 @@ create_error_bars = function(brett_object,
 #' brett_plot(brett_object, topic = "death")
 #'
 #' brett_object = get_regression_coefs(my_output, model = "BETA",
-#'                        return_just_coefs = FALSE, topics = c("death", "love"))
+#'                        return_just_coefs = FALSE,
+#'                        topics = c("death", "love"))
 #' brett_plot(brett_object, topic="death") +
 #'               ggplot2::coord_cartesian(ylim = c(0,5))
 #'
-beta_distribution_plot <- function(betamodel = boot_reg_list[[topic]],
+beta_distribution_plot <- function(betamodel,
                                    topic,
                                    newdata) {
+  # importing ggpubr is for the vignette
   # set up to plot the full Beta regression distribution
-  increment = .005
-  xgrid = seq(from = increment, to = 1-increment, by = increment)
+  increment <- .005
+  xgrid <- seq(from = increment, to = 1 - increment, by = increment)
   # make predictions
-  beta_fit = betareg::predict(betamodel,
-                              newdata = newdata,
-                              type = "density", at = xgrid)
-  toplot = beta_fit |>
+  beta_fit <- betareg::predict(betamodel,
+                               newdata = newdata,
+                               type = "density", at = xgrid)
+  toplot <- beta_fit |>
     tibble::as_tibble() |>
-    dplyr::mutate(covariate = colnames(newdata))|>
+    dplyr::mutate(covariate = colnames(newdata)) |>
     tidyr::pivot_longer(cols = -c("covariate"),
                         names_to = "gridpoint",
-                        values_to = "density")|>
+                        values_to = "density") |>
     dplyr::mutate(gridpoint = as.numeric(
-      gsub(gridpoint,pattern = "d_", replacement = "")))
+      gsub(.data$gridpoint, pattern = "d_", replacement = "")))
 
-  ggplot2::ggplot()+
+  ggplot2::ggplot() +
     ggplot2::geom_ribbon(data = toplot,
-                         ggplot2::aes(x=gridpoint,
-                                      ymax=density,
+                         ggplot2::aes(x = .data$gridpoint,
+                                      ymax = .data$density,
                                       ymin = 0,
-                                      fill = covariate,
-                                      colour = covariate),
-                         alpha = .2)+
+                                      fill = .data$covariate,
+                                      colour = .data$covariate),
+                         alpha = .2) +
     ggplot2::geom_line(data = toplot,
-                       aes(x=gridpoint, y=density,colour = covariate),
-                       alpha = 1, show.legend = FALSE)+
+                       aes(x = .data$gridpoint,
+                           y = .data$density,
+                           colour = .data$covariate),
+                       alpha = 1, show.legend = FALSE) +
     ggplot2::labs(title = paste("Topic =", topic),
                   x = "P(topic | new data)",
                   y = "Density")
-
 }
-
-
-
-
