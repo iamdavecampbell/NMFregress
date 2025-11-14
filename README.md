@@ -1,28 +1,19 @@
-## Installation; from command line:
-From the command line:
 
-git clone https://github.com/iamdavecampbell/NMFregress.git
+Now as an R package!
 
+## Installation; 
 
-
-Then source the files by openning R and running:
-
-anchor_files = list.files("../NMFregress", pattern = ".R$")
-
-lapply(paste0("../NMFregress/",anchor_files), source)
-
-
-## Install Dependencies:
-
-- Used in inference
-
-install.packages(c("mgcv","dplyr","prodlim","betareg"))
-
-- Only used in stratified bootstrap:
-
-install.packages("doParallel")
+devtools::install_github("iamdavecampbell/NMFregress")
 
 ## Current version:
-Version 0.5 release July 15, 2024
 
-Demo in the Romeo and Juliet Rmd file.
+Version 1.0 to be released Nov or maybe Dec 2025.
+
+## For more:
+
+See the vignette: **romeo_and_juliet**
+See the ArXiV paper: [https://arxiv.org/html/2506.05570](https://arxiv.org/html/2506.05570)
+
+
+
+
