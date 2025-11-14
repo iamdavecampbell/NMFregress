@@ -2,7 +2,7 @@
 
 Final checks to ensure it can be installed from remote source.
 Set up the unit tests.
-
+Make the vignette accessible.
 
 Now as an R package!
 
