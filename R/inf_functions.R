@@ -40,7 +40,7 @@
 #' specified for the design matrix).
 #'
 #' @import dplyr
-#' @importFrom stats as.formula coefficients fitted predict weights
+#' @importFrom stats as.formula coefficients fitted  weights
 #' @importFrom betareg betareg betareg.control
 #' @importFrom mgcv gam betar predict.gam
 #'
@@ -51,6 +51,7 @@
 #'                         covariates = acts)
 #' my_output <- solve_nmf(my_input)
 #' get_regression_coefs(my_output, model = "BETA")
+#'
 #'
 #' @export
 get_regression_coefs <- function(output,
@@ -98,14 +99,13 @@ get_regression_coefs <- function(output,
                                   )])
     covariates         <- output$covariates[which(
       !is.na(1 / output$sum_theta_over_docs) &
-        !is.infinite(1 / output$sum_theta_over_docs)
-    ), ] |> as.data.frame()
+        !is.infinite(1 / output$sum_theta_over_docs)), ] |>
+      as.data.frame()
     colnames(covariates) <- colnames(output$covariates)
     sum_theta_over_docs <- output$sum_theta_over_docs[which(
       !is.na(1 / output$sum_theta_over_docs) &
-        !is.infinite(1 / output$sum_theta_over_docs)
-    )]
-  } else{
+        !is.infinite(1 / output$sum_theta_over_docs))]
+  } else {
     # keep all docs.
     theta               <- t(output$theta)
     covariates          <- output$covariates
@@ -120,7 +120,7 @@ get_regression_coefs <- function(output,
   # Assume that if there is an intercept that it is provided by the user.
   if (is.null(formula) && model == "BETA") {
     factors <- colnames(covariates)
-    formula <- as.formula(paste("y~", paste(
+    formula <- stats::as.formula(paste("y~", paste(
       paste(factors, collapse = "+"),
       "-1 |",
       paste(factors, collapse = "+"),
@@ -129,7 +129,7 @@ get_regression_coefs <- function(output,
   }
   if (is.null(formula) && model == "GAM") {
     factors <- colnames(covariates)
-    formula <- as.formula(paste("y~", paste(paste0(
+    formula <- stats::as.formula(paste("y~", paste(paste0(
       "s(", factors, ")"
     ), collapse = "+")))
   }
@@ -137,7 +137,7 @@ get_regression_coefs <- function(output,
   #  Normalization of theta by it's row sums
   denominator <- sum_theta_over_docs
   normalize <- function(x, denominator) {
-    if (nrow(x) == 1) {
+    if (is.matrix(x) && nrow(x) == 1) {
       x <- t(x)
     }
     diag(1 / denominator) %*% x
@@ -211,245 +211,208 @@ get_regression_coefs <- function(output,
             while (fail != 0 && fail < 10) {
               tryCatch({
                 if (fail == 1) {
-                  data <-  data.frame(theta_nonzero[, thetaindex]
-                                      , covariates)
-                } else {
-                  # reconstruct theta_nonzero but pull it inwards away
-                  # from boundaries.
-                  data <-  data.frame(
-                    normalize(
-                      theta[, thetaindex] +
-                       (fail - 1) *
-                       min(1 / ncol(theta[, thetaindex]),
-                       min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
-                      denominator = denominator +
-                        (fail - 1 + 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
-                    ),
-                    covariates
-                  )
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
+                }else{
+                  # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +
+                                (fail-1)*min(1/ncol(theta[,thetaindex]),
+                          min(theta[theta[,thetaindex] > 0,thetaindex] / 1000)),
+                          denominator = denominator +
+                            (fail-1+1)*min(1/ncol(theta[, thetaindex]),
+                                           min(theta[theta[,thetaindex] > 0,
+                                                     thetaindex] / 1000))
+                    ),covariates)
                 }
-                colnames(data)  <- c("y", colnames(covariates))
-                beta[thetaindex, ] <- betareg::betareg(
-                  formula,
-                  data = data,
-                  link = link,
-                  link.phi = link.phi,
-                  #
-                  #link.phi is for the dispersion
-                  # in betaregression
-                  type = type,
-                  control = betareg::betareg.control(fsmaxit = 10000)
-                ) |>
-                  coefficients() |>
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex,] <-
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   link.phi = link.phi,  # link.phi is for the dispersion in betaregression
+                                   type = type,
+                                   control = betareg::betareg.control(
+                                     fsmaxit = 10000)) |>
+                  coefficients()|>
                   unlist()
                 fail <- 0 #if it works
-              }, # end trycatch expression
-              error <- function(e) {
-                fail <- fail + 1
-                cat(fail)
-
-                cat(
-                  " It'll be ok... Sometimes beta-type regressions
-                       fail because the smallest value is too close to zero.
-                       Let's increase the smallest value and try again. \n "
-                )
-              }, finally = {
-                # completed
-              })
+              },# end trycatch expression
+              error = function(e){
+                fail <<-fail+1
+                cat(fail);
+                cat(" It'll be ok... Sometimes beta-type regressions
+                    fail because the smallest value is too close to zero.
+                    Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                # this was more useful when troubleshooting.  Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
+              }
+              )
             }# end while
           }
 
-        } else{
-          # return the betareg model output and not just the coefficients
-          beta <- list()
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 1
+        }else{# return the betareg model output and not just the coefficients
+          beta = list()
+          for(thetaindex in seq_len(ncol(theta_nonzero))){
+            fail = 1
             while (fail != 0 && fail < 10) {
               tryCatch({
                 if (fail == 1) {
-                  data <-  data.frame(theta_nonzero[, thetaindex]
-                                      , covariates)
-                } else{
+                  data =  data.frame(theta_nonzero[, thetaindex]
+                                     ,covariates)
+                } else {
                   # reconstruct theta_nonzero but pull it inwards away
                   # from boundaries.
-                  data <-  data.frame(
-                    normalize(
-                      theta[, thetaindex] +
-                        (fail - 1) *
-                        min(1 / ncol(theta[, thetaindex]),
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +
+                        (fail-1)*min(1/ncol(theta[, thetaindex]) ,
                         min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
-                      denominator = denominator +
-                        (fail - 1 + 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
-                    ),
-                    covariates
-                  )
+                          denominator = denominator +
+                          (fail-1+1)*min(1/ncol(theta[,thetaindex]) ,
+                          min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
+                    ),covariates)
                 }
-                colnames(data)  <- c("y", colnames(covariates))
+                colnames(data)  = c("y",colnames(covariates))
                 beta[[thetaindex]] <-
-                  betareg::betareg(
-                    formula,
-                    data = data,
-                    link = link,
-                    link.phi = link.phi,
-                    # link.phi is for the dispersion in
-                    #betaregression
-                    type = type,
-                    control = betareg::betareg.control(fsmaxit = 10000)
-                  )
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   link.phi = link.phi,
+                                   # the dispersion in betaregression
+                                   type = type,
+                                   control = betareg::betareg.control(
+                                     fsmaxit = 10000))
                 fail <- 0 #if it works
-              }, # end trycatch expression
-              error <- function(e) {
-                fail <- fail + 1
+              },# end trycatch expression
+              error = function(e){
+                fail <<- fail+1
                 cat(fail)
-
-                cat(
-                  " It'll be ok... Sometimes beta-type regressions fail because
-                the smallest value is too close to zero.  Let's increase the
-                smallest value and try again. \n "
-                )
-              }, finally = {
-                # completed
-              })
+                cat(" It'll be ok... Sometimes beta-type regressions fail
+                    because the smallest value is too close to zero.
+                    Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                # this was more useful when troubleshooting.
+                # Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
+              }
+              )
             }# end while
-            names(beta)[thetaindex] <- topics[thetaindex]
+            names(beta)[thetaindex] = topics[thetaindex]
           }
 
         }#end of return_just_coefs or the full model output
         #(typically if not using bootstrap)
-      } else {
-        # model  GAM
+      } else {# model == GAM
         if (return_just_coefs) {
-          pred_x_vals <- unique(covariates)
+          pred_X_vals = unique(covariates)
           # inferring what is meant here,
           # let's assume that it means predicting the GAM at
           # the input covariate values.
           if (is.null(covariates |> dim())) {
-            nrow_x <- length(unique(covariates))
-            ncol_x <- 1
+            nrow_x = length(unique(covariates))
+            ncol_x = 1
           } else {
-            nrow_x <- nrow(unique(covariates))
-            ncol_x <- ncol(unique(covariates))
+            nrow_x = nrow(unique(covariates))
+            ncol_x = ncol(unique(covariates))
           }
           # make a place to put the predicted values.
-          beta <- matrix(NA,
-                         nrow = ncol(theta_nonzero),
-                         ncol = nrow_x)
-          if (ncol_x == 1) {
-            colnames(beta) <- apply(pred_x_vals, 1, function(x) {
-              paste0("X.", x)
-            })
-          } else {
-            colnames(beta) <- apply(pred_x_vals |> matrix(ncol = 1), 1,
-                                    function(x) {
-                                      paste0("X.", x, collapse = ".")
-                                      })
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_x)
+          if(ncol_x==1){
+            colnames(beta) = apply(pred_X_vals, 1, function(x) {paste0("X.",x)})
+          }else{
+            colnames(beta) = apply(pred_X_vals |> matrix(ncol = 1),
+                                   1,
+                                   function(x) {paste0("X.", x, collapse=".")})
           }
-          rownames(beta) <- topics
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 1
-            while (fail != 0 && fail < 10) {
+          rownames(beta) = topics
+          for(thetaindex in seq_len(ncol(theta_nonzero))){
+            fail = 1
+            while (fail !=0 && fail < 10) {
               tryCatch({
-                if (fail == 1) {
-                  data <-  data.frame(theta_nonzero[, thetaindex]
-                                      , covariates)
+                if(fail == 1) {
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
                 } else {
-                  # reconstruct theta_nonzero but pull it
-                  # inwards away from boundaries.
-                  data <-  data.frame(
-                    normalize(
-                      theta[, thetaindex] +
-                        (fail - 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
-                      denominator = denominator +
-                        (fail - 1 + 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
-                    ),
-                    covariates
-                  )
+                  # reconstruct theta_nonzero
+                  # but pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[, thetaindex] +
+                          (fail - 1) * min(1/ncol(theta[,thetaindex]) ,
+                        min(theta[theta[,thetaindex] > 0, thetaindex] / 1000)),
+                              denominator = denominator +
+                          (fail - 1 + 1) * min(1 / ncol(theta[, thetaindex]) ,
+                              min(theta[theta[,thetaindex]>0,thetaindex]/1000))
+                    ),covariates)
                 }
-                colnames(data)  <- c("y", colnames(covariates))
-                beta[thetaindex, ] <- mgcv::gam(formula,
-                                                family = mgcv::betar(link =
-                                                                       link),
-                                                data = data) |>
-                  mgcv::predict.gam(newdata = pred_x_vals)
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex,] <- mgcv::gam(formula,
+                                               family = betar,
+                                               link = link,
+                                               data = data)|>
+                  mgcv::predict.gam(newdata = pred_X_vals)
                 fail <- 0 # if it works, then this will
                 # break out of the while loop.
-              }, # end trycatch expression,
+              },# end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error <- function(e) {
-                fail  <- fail + 1
-                cat(fail)
-
-                cat(
-                  "\n It'll be ok... Sometimes beta-type regressions fail
-                  because the smallest value is too close to zero.  Let's
-                  increase the smallest value and try again. \n "
-                )
-              }, finally = {
-                # completed
-              })
+              error = function(e){fail <<-fail+1
+              cat(fail)
+              cat("\n It'll be ok... Sometimes beta-type regressions
+                  fail because the smallest value is too close to zero.
+                  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                # this was more useful when troubleshooting.
+                # Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
+              }
+              )
             }#end while
           }# end for loop
-          if (ncol_x == 1) {
-            beta <- rbind(beta, X_pred_vals = c(as.matrix(pred_x_vals)))
+          if(ncol_x==1){
+            beta = rbind(beta,X_pred_vals = c(as.matrix(pred_X_vals)))
           }
-        } else {
-          #return the whole model
-          beta <- list()
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 1
-            while (fail != 0 && fail < 10) {
+        }else{#return the whole model
+          beta = list()
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0 & fail < 10){
               tryCatch({
-                if (fail == 1) {
-                  data <-  data.frame(theta_nonzero[, thetaindex]
-                                      , covariates)
-                } else{
-                  # reconstruct theta_nonzero but pull
-                  # it inwards away from boundaries.
-                  data <-  data.frame(
-                    normalize(
-                      theta[, thetaindex] +
-                        (fail - 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
-                      denominator = denominator +
-                        (fail - 1 + 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
-                    ),
-                    covariates
-                  )
+                if(fail == 1){
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
+                }else{
+                  # reconstruct theta_nonzero but pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +
+                      (fail-1)*min(1/ncol(theta[, thetaindex]) ,
+                      min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
+                              denominator = denominator +
+                    (fail-1+1)*min(1/ncol(theta[, thetaindex]),
+                                   min(theta[theta[,thetaindex] > 0,
+                                             thetaindex] / 1000))
+                    ),covariates)
                 }
-                colnames(data)  <- c("y", colnames(covariates))
+                colnames(data)  = c("y",colnames(covariates))
                 beta[[thetaindex]] <- mgcv::gam(formula,
-                                                family = mgcv::betar(link =
-                                                                       link),
+                                                family = betar,
+                                                  link = link,
                                                 data = data)
-                fail <- 0 # if it works, then this will
-                # break out of the while loop.
-              }, # end trycatch expression,
+                fail <- 0 # if it works, then this
+                # will break out of the while loop.
+              },# end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error <- function(e) {
-                fail  <- fail + 1
+              error = function(e){
+                fail <<-fail+1
                 cat(fail)
-
-                cat(
-                  " It'll be ok... Sometimes beta-type regressions fail because
-                  the smallest value is too close to zero.  Let's increase
-                  the smallest value and try again. \n "
-                )
-              }, finally = {
-                # completed
-              })
+                cat(" It'll be ok... Sometimes beta-type regressions fail
+                    because the smallest value is too close to zero.
+                    Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
+                # this was more useful when troubleshooting.
+                # Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
+              }
+              )
             }# end while
-            names(beta)[thetaindex] <-  topics[thetaindex]
+            names(beta)[thetaindex] = topics[thetaindex]
           }# end forloop
 
           # end of GAM with returning the whole model.
@@ -457,261 +420,218 @@ get_regression_coefs <- function(output,
       }# end of GAM
     }# end of model choice
 
-  } else {
-    # with weights
-    if (model == "OLS") {
-      if (return_just_coefs) {
-        beta <-  stats::coef(stats::lm.fit(
-          x = as.matrix(covariates),
-          y = theta_nonzero,
-          weights = obs_weights
-        ))
-        beta <-  t(beta)
-        rownames(beta) <- topics
-      } else {
-        # return the lm model output
-        beta <- stats::lm.fit(x = covariates,
-                              y = theta_nonzero,
-                              weights = obs_weights)
-        colnames(beta$coefficients) <- topics
+  }else{ # with weights
+    if(model == "OLS"){
+      if(return_just_coefs){
+        beta = stats::coef(stats::lm.fit(x = as.matrix(covariates),
+                                         y = theta_nonzero,
+                                         weights = obs_weights))
+        beta = t(beta)
+        rownames(beta) = topics
+      }else{# return the lm model output
+        beta = stats::lm.fit(x = covariates,
+                             y = theta_nonzero,
+                             weights = obs_weights)
+        colnames(beta$coefficients) = topics
       }
 
-    } else {
-      if (model == "BETA") {
+    }else{
+      if(model == "BETA"){
         # use a Beta regression model with weights
-        zero_block <- matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
-        theta_nonzero <- rbind(theta_nonzero, zero_block)
-        obs_weights <- c(obs_weights, rep(1, nrow(zero_block)))
-        if (return_just_coefs) {
-          #
-          beta <- matrix(NA,
-                         nrow = ncol(theta_nonzero),
-                         ncol = 2 * length(covariates))
-          colnames(beta) <- c(paste0("mean.", colnames(covariates)),
-                              paste0("precision.", colnames(covariates)))
-          rownames(beta) <- topics
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 0
-            while (fail != 0 && fail < 10) {
-              fail <- 1
+        zero_block = matrix(0, nrow(covariates) - nrow(theta), ncol(theta))
+        theta_nonzero = rbind(theta_nonzero, zero_block)
+        obs_weights = c(obs_weights, rep(1, nrow(zero_block)))
+        if(return_just_coefs){#
+          beta = matrix(NA,
+                        nrow = ncol(theta_nonzero),
+                        ncol = 2*length(covariates))
+          colnames(beta) = c(paste0("mean.", colnames(covariates)),
+                             paste0("precision.", colnames(covariates)))
+          rownames(beta) = topics
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 0
+            while(fail!=0 & fail < 10){
+              fail = 1
               tryCatch({
                 cat(paste0("working on ", thetaindex))
-                beta[thetaindex, ] <-
-                  betareg::betareg(
-                    formula,
-                    data = data,
-                    link = link,
-                    weights = obs_weights,
-                    link.phi = link.phi,
-                    # link.phi is for the
-                    # dispersion in betaregression
-                    type = type,
-                    control = betareg::betareg.control(fsmaxit = 10000)
-                  ) |>
+                beta[thetaindex,] =
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   weights = obs_weights,
+                                   link.phi = link.phi,
+                                   # for the dispersion in betaregression
+                                   type = type,
+                                   control = betareg::betareg.control(
+                                     fsmaxit = 10000)) |>
                   coefficients() |>
                   unlist()
 
-                fail <- -1 #it works
+                fail = -1 #it works
 
-              }, error = function(e) {
-                print(fail)
-              }, finally = {
-                if (all(is.na(beta[thetaindex, ]))) {
-                  if (fail != -1) {
-                    cat(paste(
-                      fail,
-                      "fail for index ",
-                      thetaindex,
-                      " epsilon = ",
-                      min(theta_nonzero[, thetaindex])
-                    ))
-                  }
-                  fail <- fail + 1
+              },error = function(e){print(fail)},
+              finally= {
+                if(all(is.na(beta[thetaindex,]))){
+                  if(fail != -1){
+                    cat(paste(fail, "fail for index ",
+                              thetaindex, " epsilon = ",
+                              min(theta_nonzero[,thetaindex])))}
+                  fail <<- fail + 1;
                   #if it worked now fail = 0,
-                  #if it didn't work then fail is growing 2+
-                  theta_nonzero[, thetaindex] <- theta_nonzero[, thetaindex] +
-                    fail * min(theta_nonzero[, thetaindex]) *
-                    .5
-
+                  # if it didn't work then fail is growing 2+
+                  theta_nonzero[, thetaindex] <<- theta_nonzero[,thetaindex] +
+                    fail*min(theta_nonzero[, thetaindex])*.5;
                 }
-              })
+              }
+              )
             }
 
           }
-        } else {
-          beta <- list()
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 0
-            while (fail != 0 && fail < 10) {
-              fail <- 1
+        }else{
+          beta = list()
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 0
+            while(fail!=0 & fail < 10){
+              fail = 1
               tryCatch({
-                if (fail == 1) {
-                  data <-  data.frame(theta_nonzero[, thetaindex]
-                                      , covariates)
-                } else {
-                  # reconstruct theta_nonzero but pull it inwards away from
-                  # boundaries.
-                  data <-  data.frame(
-                    normalize(
-                      theta[, thetaindex] +
-                        (fail - 1) *
-                        min(1 / ncol(theta[, thetaindex]),
+                if(fail == 1){
+                  data =  data.frame(theta_nonzero[,thetaindex]
+                                     ,covariates)
+                }else{
+                  # reconstruct theta_nonzero but
+                  # pull it inwards away from boundaries.
+                  data =  data.frame(
+                    normalize(theta[,thetaindex] +
+                                (fail - 1) * min(1 / ncol(theta[,thetaindex]) ,
                         min(theta[theta[, thetaindex] > 0, thetaindex] / 1000)),
-                      denominator = denominator +
-                        (fail - 1 + 1) *
-                        min(1 / ncol(theta[, thetaindex]),
-                        min(theta[theta[, thetaindex] > 0, thetaindex] / 1000))
-                    ),
-                    covariates
-                  )
+                              denominator = denominator +
+                                (fail - 1 + 1 ) * min(
+                                  1 / ncol(theta[, thetaindex]),
+                                  min(theta[theta[, thetaindex] > 0,
+                                            thetaindex] / 1000))
+                    ),covariates)
                 }
-                colnames(data)  <- c("y", colnames(covariates))
+                colnames(data)  = c("y",colnames(covariates))
                 cat(paste0("working on ", thetaindex))
-                beta[thetaindex] <-
-                  betareg::betareg(
-                    formula,
-                    data = data,
-                    link = link,
-                    weights = obs_weights,
-                    link.phi = link.phi,
-                    # link.phi is for the
-                    # dispersion in betaregression
-                    type = type,
-                    control = betareg::betareg.control(fsmaxit = 10000)
-                  )
+                beta[thetaindex] =
+                  betareg::betareg(formula, data = data,
+                                   link = link,
+                                   weights = obs_weights,
+                                   link.phi = link.phi,
+                                   # for the dispersion in betaregression
+                                   type = type,
+                                   control = betareg::betareg.control(
+                                     fsmaxit = 10000))
 
-                fail <- -1 #it works
+                fail = -1 #it works
 
-              }, error = function(e) {
-                print(fail)
-              }, finally = {
-                if (all(is.na(beta[[thetaindex]]))) {
-                  if (fail != -1) {
-                    cat(paste(
-                      fail,
-                      "fail for index ",
-                      thetaindex,
-                      " epsilon = ",
-                      min(theta_nonzero[, thetaindex])
-                    ))
-                  }
-                  fail <- fail + 1
-                  #if it worked now fail = 0,
-                  #if it didn't work then fail is growing 2+
-                  theta_nonzero[, thetaindex] <- theta_nonzero[, thetaindex] +
-                    fail * min(theta_nonzero[, thetaindex]) *
-                    .5
-
+              },error = function(e){print(fail)},
+              finally= {
+                if(all(is.na(beta[[thetaindex]]))){
+                  if(fail != -1){
+                    cat(paste(fail,
+                              "fail for index ",
+                              thetaindex,
+                              " epsilon = ",
+                              min(theta_nonzero[, thetaindex])))}
+                  fail <<- fail + 1; #if it worked now fail = 0,
+                  # if it didn't work then fail is growing 2+
+                  theta_nonzero[,thetaindex] <<- theta_nonzero[, thetaindex] +
+                    fail * min(theta_nonzero[, thetaindex]) * .5
                 }
-              })
+              }
+              )
             }
-            names(beta)[thetaindex] <- topics[thetaindex]
+            names(beta)[thetaindex] = topics[thetaindex]
           }
           # return the whole regression model
         }
-      } else {
-        # model  GAM
-        if (return_just_coefs) {
-          pred_x_vals <- unique(covariates)
+      }else{# model == GAM
+        if(return_just_coefs){
+          pred_X_vals = unique(covariates)
           # inferring what is meant here,
           # let's assume that it means predicting the GAM at
           # the input covariate values.
-          if (is.null(covariates |> dim())) {
-            nrow_x <- length(unique(covariates))
-            ncol_x <- 1
-          } else{
-            nrow_x <- nrow(unique(covariates))
-            ncol_x <- ncol(unique(covariates))
+          if(is.null(covariates|> dim())){
+            nrow_x = length(unique(covariates))
+            ncol_x = 1
+          }else{
+            nrow_x = nrow(unique(covariates))
+            ncol_x = ncol(unique(covariates))
           }
           # make a place to put the predicted values.
-          beta <- matrix(NA,
-                         nrow = ncol(theta_nonzero),
-                         ncol = nrow_x)
-          if (ncol_x == 1) {
-            colnames(beta) <- apply(pred_x_vals, 1, function(x) {
-              paste0("X.", x)
-            })
-          } else{
-            colnames(beta) <- apply(pred_x_vals |> matrix(ncol = 1), 1,
-                                    function(x) {
-                                      paste0("X.", x, collapse = ".")
-                                      })
+          beta = matrix(NA, nrow = ncol(theta_nonzero), ncol = nrow_x)
+          if(ncol_x==1){
+            colnames(beta) = apply(pred_X_vals,1,function(x){paste0("X.",x)})
+          }else{
+            colnames(beta) = apply(pred_X_vals|> matrix(ncol = 1),
+                                   1,
+                                   function(x){paste0("X.",x, collapse=".")})
           }
-          rownames(beta) <- topics
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 1
-            while (fail != 0 && fail < 10) {
+          rownames(beta) = topics
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0 & fail < 10){
               tryCatch({
-                data <- cbind(theta_nonzero[, thetaindex] +
-                                (fail - 1) * min(theta_nonzero[, thetaindex]) *
-                                .5,
-                              covariates) |> as.data.frame()
-                colnames(data)  <- c("y", colnames(covariates))
-                beta[thetaindex, ] <- mgcv::gam(
-                  formula,
-                  family = mgcv::betar(link =
-                                         link),
-                  data = data,
-                  weights
-                ) |>
-                  mgcv::predict.gam(newdata = pred_x_vals)
-                fail <- 0 # if it works this will break out of the while loop.
-              }, # end trycatch expression,
+                data = cbind(theta_nonzero[, thetaindex] + (fail - 1) *
+                               min(theta_nonzero[, thetaindex]) * .5,
+                             covariates)|> as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[thetaindex,] <- mgcv::gam(formula,
+                                            family = betar,
+                                            link = link,
+                                            data = data,
+                                            weights)|>
+                  mgcv::predict.gam(newdata = pred_X_vals)
+                fail <- 0 # if it works, then this will break out of the while loop.
+              },# end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error <- function(e) {
-                fail <- fail + 1
+              error = function(e){
+                fail <<-fail+1
                 cat(fail)
-
-                cat(
-                  "\n It'll be ok... Sometimes beta-type regressions
-                fail because the smallest value is too close to zero.
-                Let's increase the smallest value and try again. \n "
-                )
-              }, finally = {
-
-              })
+                cat("\n It'll be ok... Sometimes beta-type regressions fail
+                    because the smallest value is too close to zero.  Let's
+                    increase the smallest value and try again. \n ")},
+              finally= {# completed
+                # this was more useful when troubleshooting.
+                # Otherwise it's a lot of output when in bootstrap
+                # cat(paste("\n Completed topic", thetaindex))
+              }
+              )
             }#end while
           }# end for loop
-          if (ncol_x == 1) {
-            beta <- rbind(beta, X_pred_vals = c(as.matrix(pred_x_vals)))
+          if(ncol_x==1){
+            beta = rbind(beta,X_pred_vals = c(as.matrix(pred_X_vals)))
           }
-        } else {
-          #return the whole model
-          beta <- list()
-          for (thetaindex in seq_len(ncol(theta_nonzero))) {
-            fail <- 1
-            while (fail != 0 && fail < 10) {
+        }else{#return the whole model
+          beta = list()
+          for(thetaindex in 1:ncol(theta_nonzero)){
+            fail = 1
+            while(fail!=0 & fail < 10){
               tryCatch({
-                data <- cbind(theta_nonzero[, thetaindex] +
-                                (fail - 1) * min(theta_nonzero[, thetaindex]) *
-                                .5,
-                              covariates) |> as.data.frame()
-                colnames(data)  <- c("y", colnames(covariates))
-                beta[[thetaindex]] <- mgcv::gam(
-                  formula,
-                  family = mgcv::betar(link =
-                                         link),
-                  data = data,
-                  weights = obs_weights
-                )
-                fail <- 0 # if it works this will break out of the while loop.
-              }, # end trycatch expression,
+                data = cbind(theta_nonzero[, thetaindex] +
+                            (fail - 1) * min(theta_nonzero[, thetaindex]) * .5,
+                            covariates) |>
+                  as.data.frame()
+                colnames(data)  = c("y",colnames(covariates))
+                beta[[thetaindex]] <- mgcv::gam(formula,
+                                          family = betar,
+                                          link = link,
+                                          data = data,
+                                          weights = obs_weights)
+                fail <- 0 # if it works,
+                # then this will break out of the while loop.
+              },# end trycatch expression,
               # if fails, then push fail back up to 1 from zero
-              error <- function(e) {
-                fail <- fail + 1
-                cat(fail)
-
-                cat(
-                  " It'll be ok... Sometimes beta-type regressions
-                fail because the smallest value is too close to zero.
-                Let's increase the smallest value and try again. \n "
-                )
-              }, finally = {
-                # completed
+              error = function(e){fail <<-fail+1; cat(fail);
+              cat(" It'll be ok... Sometimes beta-type regressions fail
+                  because the smallest value is too close to zero.
+                  Let's increase the smallest value and try again. \n ")},
+              finally= {# completed
                 cat(paste("\n Completed topic", thetaindex))
-              })
+              }
+              )
             }# end while
-            names(beta)[thetaindex] <- topics[thetaindex]
+            names(beta)[thetaindex] = topics[thetaindex]
           }# end forloop
           # end of GAM with returning the whole model.
         }
@@ -772,7 +692,7 @@ get_regression_coefs <- function(output,
 #' create_error_bars().
 #'
 #' @import dplyr
-#' @importFrom stats as.formula coefficients quantile weights
+#' @importFrom stats coefficients  weights
 #' @importFrom utils head tail
 #'
 #' @examples
@@ -782,6 +702,8 @@ get_regression_coefs <- function(output,
 #'                         covariates = acts)
 #' my_output <- solve_nmf(my_input)
 #' boot_samples = boot_reg(my_output, samples = 100, model = "OLS")
+#'
+#' @seealso [boot_reg_stratified()]
 #'
 #' @export
 boot_reg <- function(output,
@@ -984,12 +906,12 @@ boot_reg <- function(output,
 #' create_error_bars().
 #'
 #' @import dplyr
-#' @importFrom stats as.formula coefficients quantile weights
+#' @importFrom stats coefficients  weights
 #' @importFrom utils head tail
 #' @importFrom prodlim row.match
 #' @import doParallel
-#' @importFrom doParallel %dopar%
 #' @import foreach
+#' @importFrom foreach %dopar%
 #' @import parallel
 #'
 #' @examples
@@ -1001,9 +923,10 @@ boot_reg <- function(output,
 #' boot_samples <- boot_reg_stratified(my_output, samples=100,
 #'                       model = "OLS", parallel =1)
 #'
+#' @seealso [boot_reg()]
+#'
 #' @export
-#'
-#'
+
 boot_reg_stratified <- function(output,
                                samples,
                                parallel = 4,
@@ -1149,8 +1072,9 @@ boot_reg_stratified <- function(output,
     #parallel loop start
     to_return <- foreach::foreach(
       i = 1:samples,
-      .export = c("get_regression_coefs"),
-      .packages = "betareg"
+      .export = c("get_regression_coefs",
+                  "betareg::betareg",
+                  "betareg::betareg.control")
     ) %dopar% {
       ##### produce bootstrap sample and form associated theta and covariate
 
@@ -1256,7 +1180,7 @@ boot_reg_stratified <- function(output,
 #'
 #' @import ggplot2
 #' @importFrom reshape2 melt
-#' @import betareg
+#' @importFrom betareg predict
 #' @importFrom mgcv gam betar predict.gam
 #' @importFrom stringr str_to_title
 #'
@@ -1267,11 +1191,11 @@ boot_reg_stratified <- function(output,
 #'                         covariates = acts)
 #' my_output <- solve_nmf(my_input)
 #' brett_object <- boot_reg(my_output, 100, model = "OLS",
-#'                  topics=c("death", "love"))
-#' brett_plot(brett_object, topic="death")
+#'                  topics = c("death", "love"))
+#' brett_plot(brett_object, topic = "death")
 #'
 #' brett_object = get_regression_coefs(my_output, model = "BETA",
-#'                        return_just_coefs = FALSE, topics=c("death", "love"))
+#'                        return_just_coefs = FALSE, topics = c("death", "love"))
 #' brett_plot(brett_object, topic="death")
 #'
 #'

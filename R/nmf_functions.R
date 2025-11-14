@@ -74,7 +74,7 @@ solve_nmf <- function(input, user_anchors = NULL) {
 
   ##### set up necessary matrices for nmf
   anchor_rows <- match(anchors, input$vocab)
-  non_anchor_rows <- setdiff( seq_along(input$vocab), anchor_rows)
+  non_anchor_rows <- setdiff(seq_along(input$vocab), anchor_rows)
   anchor_block <- input$tdm[anchor_rows, ]
   other_block  <- input$tdm[non_anchor_rows, ]
   Y <- matrix(rep(0, length(anchor_rows) * length(non_anchor_rows)),
@@ -91,12 +91,12 @@ solve_nmf <- function(input, user_anchors = NULL) {
 
       ##### apply random projection
       ##### details are messy, refer to thesis
-      A <- d*rbind(t(anchor_block), matrix(
+      A <- d * rbind(t(anchor_block), matrix(
           rep(0, num_zeros * nrow(anchor_block)),
           nrow = num_zeros))
       A <- as.matrix(apply(A, FUN = phangorn::fhm, MARGIN = 2))
-      B <- d*rbind(t(other_block), matrix(
-        rep(0, num_zeros*nrow(other_block)), nrow = num_zeros))
+      B <- d * rbind(t(other_block), matrix(
+        rep(0, num_zeros * nrow(other_block)), nrow = num_zeros))
       B <- as.matrix(apply(B, FUN = phangorn::fhm, MARGIN = 2))
       selected <- sample(c(1, 0), power_of_two,
                   prob = c(input$proj_dim / power_of_two,
@@ -176,14 +176,14 @@ solve_nmf <- function(input, user_anchors = NULL) {
 print_top_words <- function(output, n = 10) {
 
   ##### check
-  if(!inherits(output, "nmf_output")) {
+  if (!inherits(output, "nmf_output")) {
     stop("Output must be an object of class nmf_output.")
   }
   n <- as.integer(n)
 
   ##### prepare, fill, and return matrix of top words
   word_list <- list()
-  for(i in 1:output$topics) {
+  for (i in 1:output$topics) {
     word_list[[i]] <- output$vocab[order(output$phi[, i],
                                          decreasing = TRUE)][1:n]
     names(word_list)[i] <- output$anchors[i]
@@ -215,7 +215,7 @@ print_top_words <- function(output, n = 10) {
 #' @export
 get_lambda <- function(output) {
   ##### check input types
-  if(!inherits(output, "nmf_output")) {
+  if (!inherits(output, "nmf_output")) {
     stop("Output must be an object of class nmf_output.")
   }
    lambdas <- output$phi[1:output$topics,
@@ -265,7 +265,6 @@ get_lambda <- function(output) {
 get_reconstruction_error <- function(output,
                                      input,
                                      n_topics = ncol(output$phi)) {
-  frobenius_norm <- topics <- NULL
   ##### check input types
   if (!inherits(output, "nmf_output")) {
     stop("output must be an object of class nmf_output.")
@@ -277,8 +276,8 @@ get_reconstruction_error <- function(output,
   # find the indices of the anchors from the original data vocabulary
 
 
-  frobeniusnorm <- data.frame(topics = 0:n_topics,
-                              frobenius_norm = rep(NA, n_topics + 1))
+  frobeniusnorm <- data.frame(topics = 1:n_topics,
+                              frobenius_norm = rep(NA, n_topics))
   docs_2_keep <- which(output$sum_theta_over_docs > 0)
   rownames(input$tdm) <- input$vocab
   rownames(output$phi) <- output$vocab
@@ -290,11 +289,10 @@ get_reconstruction_error <- function(output,
                                            input$tdm[output$vocab,
                                                      docs_2_keep],
                                            type = "f")
-
     for (topic_index in 2:ncol(output$phi)) {
               tdm_hat <- output$phi[output$vocab, 1:topic_index] %*%
                 output$theta[1:topic_index, ]
-              frobeniusnorm[topic_index + 1, "frobenius_norm"] <- norm(
+              frobeniusnorm[topic_index, "frobenius_norm"] <- norm(
                 tdm_hat[, docs_2_keep] - input$tdm[output$vocab, docs_2_keep],
                 type = "f")
   }

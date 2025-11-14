@@ -22,7 +22,8 @@
 #' @format ## `vector`
 #' A vector with 788 elements
 #' \describe{
-#'   \item{values}{Continuous conversion of line number as a fraction of the way through each act.}
+#'   \item{values}{Continuous conversion of line number as a fraction of the
+#'         way through each act.}
 #'   ...
 #' }
 #'
@@ -38,13 +39,12 @@
 #' @format ## `matrix`
 #' A matrix with 2997 rows and  788 columns:
 #' \describe{
-#'   \item{rows}{unique terms, sorted alphabetically, as defined by the row labels. Terms have been filtered to remove stopwords}
+#'   \item{rows}{unique terms, sorted alphabetically, as defined by the row
+#'   labels. Terms have been filtered to remove stopwords}
 #'   \item{columns}{Each column is one line of the play}
-#'   \item{elements}{Counts of occurence of each term within each line of the play.}
+#'   \item{elements}{Counts of occurence of each term within each line
+#'   of the play.}
 #' }
 #'
 #' @source <https://www.gutenberg.org/files/1513/1513-h/1513-h.htm>
 "Romeo_and_Juliet_tdm"
-
-
-

@@ -15,27 +15,13 @@ This document will serve as a brief introduction to the `NMFregress` package, wh
 
 ## 1. Building a Corpus
 
-We want to do topic modelling, so we'll need some documents. Let's use Romeo and Juliet (RJ), freely available on Project Gutenberg: https://www.gutenberg.org/ebooks/1112. Lines in the play will be considered documents, and we'll partition them by the act in which they appear. Since acts are deliberately chosen to divide a play's plot into coherent segments, we should be able to detect statistical variation in Shakespeare's language as the play progresses. I've prepared a term-document matrix (TDM) and a factor containing the play's acts using an admittedly haphazard script contained in this repository -- it's not the prettiest but it gets the job done. Let's load the library and the RJ data: 
+We want to do topic modelling, so we'll need some documents. Let's use Romeo and Juliet (RJ), freely available on Project Gutenberg: https://www.gutenberg.org/ebooks/1112. Lines in the play will be considered documents, and we'll partition them by the act in which they appear. Since acts are deliberately chosen to divide a play's plot into coherent segments, we should be able to detect statistical variation in Shakespeare's language as the play progresses. Included is a term-document matrix (TDM) and a factor containing the play's acts. Let's load the library and the included data: 
 
 
 
 ```{r, message = FALSE}
-library(tidyverse)
-library(ggpubr) # for arranging plots 
-
-```
-
-
-
-```{r, message = FALSE, results='hide'}
-# It's clunky for for version 0.5 just source the files after cloning the git repo
-anchor_files = list.files("../NMFregress", pattern = ".R$")
-lapply(paste0("../NMFregress/",anchor_files), source)
-
-# make the datasets available
-load(paste0("../NMFregress/data/tdm.Rdata"))
-load(paste0("../NMFregress/data/words.Rdata"))
-load(paste0("../NMFregress/data/acts.Rdata"))
+library(NMFregress)
+library(ggpubr) # for agganging the output of some plots.
 ```
 
 
@@ -44,47 +30,33 @@ load(paste0("../NMFregress/data/acts.Rdata"))
 The first step is to build an object that can be passed to the NMF solver. Rather than the solver requiring a slew of arguments, we instead create an object of class `nmf_input` which carries around the necesarry pieces, specified once and for all by the user. Most importantly, the user must create and pass a term-document matrix, which is a good ol' R matrix -- not a term-document matrix as created using some other topic modelling packages. You're on your own here -- we provide no functionality for creating a TDM or any of the other pre-processing that topic modelling usually entails. Also of note: we really mean TDM, and not DTM! Make sure the words are rows, otherwise everything will come out backwards! 
  
  
-Once you've got your TDM, you need some discrete covariate structure over the documents -- a partitioning, as we'll refer to it. These are the acts of RJ in our example. The first 217 documents (which recall are lines in the play) belong to act one, for instance. This is encoded as a factor of equal length to the number of documents, with the entries giving the value of the covariate like so:
+Once you've got your TDM, you need some covariate structure over the documents -- a partitioning, as we'll refer to it. These are the acts of RJ in our example. The first documents (which recall are lines in the play) belong to act one and so on.  The acts are encoded into a design matrix where _Act 1_ will be the intercept and subsequent acts are dummy encoded. 
 
 ```{r}
-acts = factor(acts, levels = c("one","two","three","four","five"))
 head(acts)
-
-```
-To make use of the covariates we need something that will act like a design matrix.  Let's convert _acts_ into a dummy variable.  Let's also make a numeric version of acts so that we can test our additional functionality. 
-
-```{r}
-acts_numeric = acts|> case_match(
-  "one" ~ 1,
-  "two" ~ 2,
-  "three" ~ 3,
-  "four" ~ 4,
-  "five" ~ 5
-)
-acts_numeric = data.frame(intercept = 1, act = acts_numeric )
-
-acts_dummy = model.matrix(~.,data.frame(acts))
+tail(acts)
 ```
 
 
-
-
-Finally, we'll need a character vector which contains all the unique words in the corpus. Crucially, they have to be in the same order as that of the TDM's rows. Again, you're on your own here -- create this vector however you see fit. Here's the first 25 words in our RJ courpus:
+The Term Document matrix for Romeo and Juliet has already been built with row labels corresponding to the vocabulary.  While not necessary, this is a convenient way of ensuring that you don't mix up rows.
 
 ```{r}
-head(words, n = 25)
+dim(Romeo_and_Juliet_tdm)
+
+Romeo_and_Juliet_tdm[312:318, 184:193]
 ```
 
-
-That's it! Now simply run 
+That's it! Now prepare for NMF by gathering the components to creates an object `my_input` of class `nmf_input` (this is basically just a named list) which is ready for factorization where it will use 25 topics.  
 
 ```{r}
 
-my_input = create_input(tdm, vocab = words, covariates = acts_dummy, topics = 25)
+my_input = create_input(Romeo_and_Juliet_tdm, 
+                        vocab = rownames(Romeo_and_Juliet_tdm), 
+                        covariates = acts, 
+                        topics = 25)
 my_input|> names()
 ```
 
-which creates an object `my_input` of class `nmf_input` (this is basically just a named list); the last argument tells the solver we want 25 topics in our topic model. 
 
 ## 3. Solving NMF 
 
@@ -94,24 +66,28 @@ Since `my_input` contains (nearly) all the information the solver needs, we now 
 my_output = solve_nmf(my_input)
 ```
 
-And there you have it. `my_output` contains $\Phi$ (the word-topic matrix), $\Theta$ (the topic-document matrix), the anchor words, and some relevant infomration from `my_input` that the inference functions will need to do their thing:
+The resulting `my_output` is a class `nmf_output` object containing $\phi$ (the word-topic matrix), $\theta$ (the topic-document matrix), the anchor words, and some relevant information from `my_input` that the inference functions will need to do their thing:
 
 ```{r}
-str(my_output)
+names(my_output)
+class(my_output)
 ```
 
-If you're just interested in the usual topic modelling pipeline, then you're done at this stage. Print the top words for each topic using 
+If you're just interested in the usual topic modelling pipeline, then you're done at this stage. Print the top words for each topic using the below code where `n=10` says we'd like 10 words printed per topic. Topics are labelled by their anchor word. 
 
 ```{r}
 print_top_words(my_output, n = 10)
 ``` 
 
-where `n=10` says we'd like 10 words printed per topic. Topics are labelled by their anchor word. 
 
-Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distorition. But, for large matrices this is a really nice option; we'd specify something like 
 
-```{r,  eval = FALSE}
-my_input2 = create_input(tdm, words, covariates = acts_dummy, topics = 25 , project = TRUE, proj_dim = 200)
+Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distortion. But, for large matrices this is a really nice option; we'd specify something like this code (shown for example but won't be used elsewhere.)
+
+```{r,  eval = true}
+my_input2 = create_input(Romeo_and_Juliet_tdm,
+                        vocab = rownames(Romeo_and_Juliet_tdm), 
+                        covariates = acts, 
+                        topics = 25)
 my_output2 = solve_nmf(my_input2)
 ```
 
@@ -122,13 +98,11 @@ which tells the solver we'd like to project down to 200 dimensions to find the a
 
 One may be interested in selecting the number of topics.  The right way to do this is based on whether or not the topics appropriately measure the hypothesis that you wish to test.  
 
-Sometimes it is helpful to see how additional topics assist with the reconstruction error of the original TDM.  There is now a way to do that.  This function calculates the Frobenius norm of reconstruction, $||X- \phi_t\theta_t||$, based on $t\in {1,2,...T}$ topics.  In the output, the topic value of  = 0 implies that no reconstruction is performed and instead the norm is applied to the original TDM $||X||$.
+Sometimes it is helpful to see how additional topics assist with the reconstruction error of the original TDM.   The `get_reconstruction_error` function calculates the Frobenius norm of reconstruction, $||X- \phi_t\theta_t||$, based on $t\in {1,2,...T}$ topics.  
 
 ```{r}
-
 reconstruction_error = get_reconstruction_error(my_output, my_input)
-
-reconstruction_error$frobeniusnorm
+reconstruction_error
 ```
 
 ## Normalization
@@ -144,11 +118,11 @@ The interpretation of performing regression on something akin to a probabilistic
  Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run:
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE }
-OLS_bootstrap = boot_reg(my_output, samples = 1000, Model = "OLS")
+OLS_bootstrap = boot_reg(my_output, samples = 1000, model = "OLS")
 
 # Test the input of a subset of topics
 ```
-A formula could be specified.  By default a formula is derived from all the columns of the covariate matrix.  Note that an intercept must be provided  as a column of the covariate matrix if you go this default route.
+A formula could be specified.  By default a formula is derived from all the columns of the covariate matrix.  Note that an intercept must be provided  as a column of the covariate matrix if you go this default route.  Here Act 1 is the intercept, with all other acts being interpreted as deviations thereof.
 
 What we get is the bootstrap samples for the regression model of $text_i = \beta_0+ \sum_{act = 1}^4 X_{i,act} \beta_{act} + error_i$.
 
@@ -159,18 +133,18 @@ Note that we ran a model where act 1 was the baseline, so if all other effects a
 ```{r, message = FALSE}
 # plot the raw OLS coefficients:
 
-ols_boot_juliet = boot_plot(OLS_bootstrap, "juliet") 
-ols_boot_dead   = boot_plot(OLS_bootstrap, "dead")
-ggarrange(ols_boot_juliet, ols_boot_dead, 
+ols_boot_juliet = brett_plot(OLS_bootstrap, "juliet") 
+ols_boot_dead   = brett_plot(OLS_bootstrap, "dead")
+ggpubr::ggarrange(ols_boot_juliet, ols_boot_dead, 
           ncol = 1, nrow = 2)
 
 # or plot the model fit by including new data at which to evaluate the OLS model:
 newdata = my_output$covariates|> unique()
 rownames(newdata) = c("act1","act2","act3","act4","act5")
 
-ols_fit_juliet = boot_plot(OLS_bootstrap, "juliet", newdata) 
-ols_fit_dead   = boot_plot(OLS_bootstrap, "dead", newdata)
-ggarrange(ols_fit_juliet, ols_fit_dead, 
+ols_fit_juliet = brett_plot(OLS_bootstrap, "juliet", newdata) 
+ols_fit_dead   = brett_plot(OLS_bootstrap, "dead", newdata)
+ggpubr::ggarrange(ols_fit_juliet, ols_fit_dead, 
           ncol = 1, nrow = 2)
 
 create_error_bars(OLS_bootstrap, topic = c("dead"))|>
@@ -190,46 +164,45 @@ First we swap out the covariates from the setup so that we run the model of inte
 \{"night","love","juliet", "death", "dead"\}.
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE}
-# my_output$covariates = acts_numeric
-my_output$covariates = acts_dummy
+
 # just the model without bootstrap
 beta_asymptotic = get_regression_coefs(my_output, 
-                           Model = "BETA", 
+                           model = "BETA", 
                            return_just_coefs = FALSE,
                            topics = c("night","love","juliet", "death", "dead"))
 
 # to do full bootstrap:
 beta_boot = boot_reg(my_output, 
-                           samples = 100, Model = "BETA", 
+                           samples = 100, model = "BETA", 
                            return_just_coefs = TRUE,
                            topics = c("night","love","juliet", "death", "dead"))
 
 
-beta_asymptotic_juliet = boot_plot(beta_asymptotic, "juliet")
-beta_asymptotic_dead   = boot_plot(beta_asymptotic, "dead")
-ggarrange(beta_asymptotic_juliet, beta_asymptotic_dead, 
+beta_asymptotic_juliet = brett_plot(beta_asymptotic, "juliet")
+beta_asymptotic_dead   = brett_plot(beta_asymptotic, "dead")
+ggpubr::ggarrange(beta_asymptotic_juliet, beta_asymptotic_dead, 
           ncol = 1, nrow = 2)
 # or include new observations for the model:
 newdata = my_output$covariates|> unique()
 rownames(newdata) = c("act1","act2","act3","act4","act5")
 
-beta_asymptotic_juliet_newdata = boot_plot(beta_asymptotic, "juliet", newdata = newdata)
-beta_asymptotic_dead_newdata   = boot_plot(beta_asymptotic, "dead"  , newdata = newdata)
-ggarrange(beta_asymptotic_juliet_newdata, beta_asymptotic_dead_newdata, 
+beta_asymptotic_juliet_newdata = brett_plot(beta_asymptotic, "juliet", newdata = newdata)
+beta_asymptotic_dead_newdata   = brett_plot(beta_asymptotic, "dead"  , newdata = newdata)
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_asymptotic_dead_newdata, 
           ncol = 1, nrow = 2)
 
 
-beta_boot_juliet = boot_plot(beta_boot, "juliet")
-beta_boot_dead   = boot_plot(beta_boot, "dead")
-ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,
+beta_boot_juliet = brett_plot(beta_boot, "juliet")
+beta_boot_dead   = brett_plot(beta_boot, "dead")
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,
           beta_asymptotic_dead_newdata, beta_boot_dead,
           ncol = 2, nrow = 2)
 
 # or include new observations for the model:
-beta_boot_juliet_newdata = boot_plot(beta_boot, "juliet",newdata)
-beta_boot_dead_newdata   = boot_plot(beta_boot, "dead",newdata)
+beta_boot_juliet_newdata = brett_plot(beta_boot, "juliet",newdata)
+beta_boot_dead_newdata   = brett_plot(beta_boot, "dead",newdata)
 
-ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,beta_boot_juliet_newdata,
+ggpubr::ggarrange(beta_asymptotic_juliet_newdata, beta_boot_juliet,beta_boot_juliet_newdata,
           beta_asymptotic_dead_newdata, beta_boot_dead,beta_boot_dead_newdata,
           ncol = 3, nrow = 2)
 ```
@@ -249,20 +222,27 @@ Note that when running beta regression on a small number of documents will likel
 
 ## 6. Inference III.  Generalized Additive Model with Beta Regression
 
-This comes from the **mgcv** package using  _beta_ regression.  These intervals are additive and can produce values beyond the [0,1] bounds.  The way around that is more complicated and beyond this software version.  
-
+This comes from the **mgcv** package using  _beta_ regression.  We need a continuous covariate so we build a univariate vector with values taken as the increments for each line within each act.
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE }
-# Need to fake spread out the covariates so that a GAM might be reasonable
-my_output$covariates = matrix(acts_numeric[,2]+rnorm(n = length(acts_numeric[,2]), mean = 0, sd = 1),ncol = 1)
+# Each document is a line from the play, 
+# so let's define line number as the fraction of the way through the particular act.
+#
+
+my_output$covariates = matrix(acts_continuous, ncol = 1)
 colnames(my_output$covariates) = "acts"
 beta_gam = get_regression_coefs(output = my_output, 
-                    Model =  "GAM", 
+                    model =  "GAM", 
                     return_just_coefs = FALSE,
                     topics = c("night","love","juliet", "death", "dead")
          )
-boot_plot(beta_gam, 
+brett_plot(beta_gam, 
           topic = "death", 
+          newdata = data.frame(acts=1:5))
+
+
+brett_plot(beta_gam, 
+          topic = "juliet", 
           newdata = data.frame(acts=1:5))
 
 
