@@ -1,8 +1,12 @@
 ---
 title: "A Brief Tutorial on NMFregress"
 author: Gabriel Phelan & Dave Campbell
-date: July 2024
-output: html_document
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteEngine{knitr::knitr}
+  %\VignetteIndexEntry{A Brief Tutorial on NMFregress}
+  %\usepackage[UTF-8]{inputenc}
 ---
 
 ```{r setup, include=FALSE}
@@ -83,7 +87,7 @@ print_top_words(my_output, n = 10)
 
 Now, a word on the optional argument in  `create_input(..., project = FALSE)`. This tells the solver that we do *not* want to perform random projections prior to solving NMF. Random projections send the data down to a random low-dimensional subspace, perform the linear algebra calculations there, and then map back up to the original space. Used appropriately, these can get provably close to the original solution while providing potentially large speed-ups. The TDM is small enough here where this isn't really an issue, and in fact such a projection may even be detrimental since "small" data is subject to higher distortion. But, for large matrices this is a really nice option; we'd specify something like this code (shown for example but won't be used elsewhere.)
 
-```{r,  eval = true}
+```{r}
 my_input2 = create_input(Romeo_and_Juliet_tdm,
                         vocab = rownames(Romeo_and_Juliet_tdm), 
                         covariates = acts, 
