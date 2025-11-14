@@ -1,3 +1,8 @@
+## Upcoming branch subject to
+
+Final checks to ensure it can be installed from remote source.
+Set up the unit tests.
+
 
 Now as an R package!
 
