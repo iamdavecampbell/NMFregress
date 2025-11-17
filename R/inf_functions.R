@@ -51,7 +51,13 @@
 #'                         covariates = acts)
 #' my_output <- solve_nmf(my_input)
 #' get_regression_coefs(my_output, model = "BETA")
+#' get_regression_coefs(my_output, model = "OLS")
 #'
+#' my_output$covariates <- matrix( acts_continuous,
+#'             ncol = 1, dimnames = list(NULL,"acts"))
+# coefs <- get_regression_coefs(my_output,
+#                               model = "GAM",
+#                               topics = "romeo")
 #'
 #' @export
 get_regression_coefs <- function(output,

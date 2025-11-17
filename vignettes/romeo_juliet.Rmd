@@ -279,7 +279,9 @@ This comes from the **mgcv** package using  _beta_ regression.  We need a contin
 # so let's define line number as the fraction of the way through the
 # particular act.
 #
-my_output$covariates <- matrix(acts_continuous, ncol = 1)
+my_output$covariates <-  matrix( acts_continuous,
+                                 ncol = 1,
+                                 dimnames = list(NULL,"acts"))
 colnames(my_output$covariates) <- "acts"
 beta_gam <- get_regression_coefs(output = my_output,
                                  model =  "GAM",

@@ -66,6 +66,9 @@ my_input <- create_input(Romeo_and_Juliet_tdm,
                         covariates = acts)
 my_output <- solve_nmf(my_input)
 get_regression_coefs(my_output, model = "BETA")
+get_regression_coefs(my_output, model = "OLS")
 
+my_output$covariates <- matrix( acts_continuous,
+            ncol = 1, dimnames = list(NULL,"acts"))
 
 }
