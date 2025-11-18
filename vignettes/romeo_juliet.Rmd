@@ -11,6 +11,7 @@ vignette: >
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 9, fig.height = 6)
 ```
 
 ## Introduction
@@ -25,7 +26,6 @@ We want to do topic modelling, so we'll need some documents. Let's use Romeo and
 
 ```{r, message = FALSE}
 library(NMFregress)
-library(ggpubr) # for agganging the output of some plots.
 ```
 
 
@@ -105,8 +105,7 @@ One may be interested in selecting the number of topics.  The right way to do th
 Sometimes it is helpful to see how additional topics assist with the reconstruction error of the original TDM.   The `get_reconstruction_error` function calculates the Frobenius norm of reconstruction, $||X- \phi_t\theta_t||$, based on $t\in {1,2,...T}$ topics.  
 
 ```{r}
-reconstruction_error <- get_reconstruction_error(my_output, my_input)
-reconstruction_error
+get_reconstruction_error(my_output, my_input)
 ```
 
 ## Normalization
@@ -119,7 +118,7 @@ Documents have different lengths and the user may see fit to handle this in one 
 
 The interpretation of performing regression on something akin to a probabilistic topic model implies that OLS will probably break the Gauss Markov theorem conditions.  However it is reasonable to use under some conditions.  Linear models are appropriate here if we set act as a factor and we use bootstrap for interval estimates.
 
- Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run:
+ Recall that these are the play's acts. Basically, we're interested in the relationship between topics and groups. For this we run the code below but **change the number of bootstrap samples**.  Using 1000 samples is way too small for anything important.  Here we choose 1000 iterations so that this file will render to html quickly.
 
 ```{r, message = FALSE, warning=FALSE, results = FALSE }
 OLS_bootstrap <- boot_reg(my_output, samples = 1000, model = "OLS")
@@ -135,12 +134,11 @@ Note that we ran a model where act 1 was the baseline, so if all other effects a
 
 
 ```{r, message = FALSE}
+
 # plot the raw OLS coefficients:
 
-ols_boot_juliet <- brett_plot(OLS_bootstrap, "juliet")
-ols_boot_dead   <- brett_plot(OLS_bootstrap, "dead")
-ggpubr::ggarrange(ols_boot_juliet, ols_boot_dead,
-                  ncol = 1, nrow = 2)
+brett_plot(OLS_bootstrap, "juliet")
+brett_plot(OLS_bootstrap, "dead")
 
 # or plot the model fit by including
 # new data at which to evaluate the OLS model:
@@ -150,11 +148,9 @@ newdata <- my_output$covariates |> unique()
 rownames(newdata) <- c("act1", "act2", "act3", "act4", "act5")
 
 
-ols_fit_juliet <- brett_plot(OLS_bootstrap, "juliet", newdata)
-ols_fit_dead   <- brett_plot(OLS_bootstrap, "dead", newdata)
-ggpubr::ggarrange(ols_fit_juliet,
-                  ols_fit_dead,
-                  ncol = 1, nrow = 2)
+brett_plot(OLS_bootstrap, "juliet", newdata)
+brett_plot(OLS_bootstrap, "dead", newdata)
+
 
 bootstrap_error_bars(OLS_bootstrap,
                      topicvector = c("dead")) |>
@@ -173,6 +169,8 @@ Note that Beta regression is much slower than OLS.  We could still use bootstrap
 First we swap out the covariates from the setup so that we run the model of interest. Then we select the topics of interest.  Here we will use:
 \{"night","love","juliet", "death", "dead"\}.
 
+For this we run the code below but **change the number of bootstrap samples**.  Using 100 samples is way too small for anything important.  Here we choose 100 iterations so that this file will render to html quickly, not because it is a good number.
+
 ```{r, message = FALSE, warning=FALSE, results = FALSE}
 
 # just the model without bootstrap
@@ -185,7 +183,9 @@ beta_asymptotic <- get_regression_coefs(my_output,
                                                    "death",
                                                    "dead"))
 
-# to do full bootstrap:
+# using bootstrap for the mean of Beta regression is slow
+# change the 100 samples to something slower (and more reasonable) like 5000+.
+# If you want fast, then use the asymptotic MLE tools.
 beta_boot <- boot_reg(my_output,
                       samples = 100, model = "BETA",
                       return_just_coefs = TRUE,
@@ -195,11 +195,9 @@ beta_boot <- boot_reg(my_output,
                                  "death",
                                  "dead"))
 
-beta_asymptotic_juliet <- brett_plot(beta_asymptotic, "juliet")
-beta_asymptotic_dead   <- brett_plot(beta_asymptotic, "dead")
-ggpubr::ggarrange(beta_asymptotic_juliet,
-                  beta_asymptotic_dead,
-                  ncol = 1, nrow = 2)
+brett_plot(beta_asymptotic, "juliet")
+brett_plot(beta_asymptotic, "dead")
+
 # or include new observations for the model:
 newdata <- my_output$covariates |> unique()
 rownames(newdata) <- c("act1",
@@ -208,35 +206,19 @@ rownames(newdata) <- c("act1",
                        "act4",
                        "act5")
 
-beta_asymptotic_juliet_newdata <- brett_plot(beta_asymptotic,
-                                             topic = "juliet",
-                                             newdata = newdata)
-beta_asymptotic_dead_newdata <- brett_plot(beta_asymptotic,
-                                           topic = "dead",
-                                           newdata = newdata)
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
-                  beta_asymptotic_dead_newdata,
-                  ncol = 1, nrow = 2)
+brett_plot(beta_asymptotic,
+           topic = "juliet",
+           newdata = newdata)
+brett_plot(beta_asymptotic,
+           topic = "dead",
+           newdata = newdata)
 
-beta_boot_juliet <- brett_plot(beta_boot, "juliet")
-beta_boot_dead   <- brett_plot(beta_boot, "dead")
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
-                  beta_boot_juliet,
-                  beta_asymptotic_dead_newdata,
-                  beta_boot_dead,
-                  ncol = 2, nrow = 2)
+brett_plot(beta_boot, "juliet")
+brett_plot(beta_boot, "dead")
 
 # or include new observations for the model:
-beta_boot_juliet_newdata <- brett_plot(beta_boot, "juliet", newdata)
-beta_boot_dead_newdata   <- brett_plot(beta_boot, "dead", newdata)
-
-ggpubr::ggarrange(beta_asymptotic_juliet_newdata,
-                  beta_boot_juliet,
-                  beta_boot_juliet_newdata,
-                  beta_asymptotic_dead_newdata,
-                  beta_boot_dead,
-                  beta_boot_dead_newdata,
-                  ncol = 3, nrow = 2)
+brett_plot(beta_boot, "juliet", newdata)
+brett_plot(beta_boot, "dead", newdata)
 ```
 
 

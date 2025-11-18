@@ -1,0 +1,32 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
+Now as an R package!
+
+## Installation; 
+
+`devtools::install_github("iamdavecampbell/NMFregress")`
+
+## Current version:
+
+Version ‘1.0’ with anticipated released late 2025.
+
+## For more:
+
+- Check out the list of vignettes (currently there's only one):
+
+`vignette(package="NMFregress")`
+
+- See the vignette: **romeo_and_juliet**
+
+`vignette("romeo_juliet", package = "NMFregress")`
+
+- See the ArXiV paper: [https://arxiv.org/html/2506.05570](https://arxiv.org/html/2506.05570)
+
+
+
+

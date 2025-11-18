@@ -1,7 +1,7 @@
 Package: NMFregress
 Type: Package
 Title: Beta Regression Effects for Topic Trends
-Version: 0.6.0
+Version: 1.0.0
 Authors@R: c(
     person(
       "Campbell", "Dave",
@@ -40,5 +40,6 @@ RoxygenNote: 7.3.3
 Suggests: 
     knitr,
     rmarkdown,
-    ggpubr
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
+Config/testthat/edition: 3
