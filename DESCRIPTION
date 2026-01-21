@@ -1,0 +1,45 @@
+Package: NMFregress
+Type: Package
+Title: Beta Regression Effects for Topic Trends
+Version: 1.0.0
+Authors@R: c(
+    person(
+      "Campbell", "Dave",
+      email = "DaveCampbell@cunet.carleton.ca",
+      role = c("aut", "cre"),
+      comment = c(ORCID = "0000-0001-8722-4450")
+    ),
+    person(
+      "Phelan", "Gabe",
+      "",
+      role = c("aut")
+    )
+  )
+Imports:
+    betareg,
+    doParallel,
+    dplyr,
+    foreach,
+    ggplot2,
+    ggridges,
+    mgcv,
+    nnls,
+    phangorn,
+    prodlim,
+    reshape2,
+    stats,
+    stringr,
+    tibble,
+    tidyr
+Description: Performs Topic Model Decomposition of a text corpus and allows regression effects and hypothesis tests on covariates.
+Depends: R (>= 4.1.0)
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.3
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
