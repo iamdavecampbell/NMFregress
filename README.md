@@ -6,11 +6,11 @@ Now as an R package!
 
 ## Current version:
 
-Version ‘1.0’ with anticipated released late 2025.
+Version ‘1.0’.
 
 ## For more:
 
-- Check out the list of vignettes (currently there's only one):
+- List the vignette name:
 
 `vignette(package="NMFregress")`
 
@@ -18,7 +18,10 @@ Version ‘1.0’ with anticipated released late 2025.
 
 `vignette("romeo_juliet", package = "NMFregress")`
 
-- See the ArXiV paper: [https://arxiv.org/html/2506.05570](https://arxiv.org/html/2506.05570)
+- Published article: G.Phelan and D. A.Campbell, “Testing Hypotheses of Covariate Effects on Topics of Discourse,” Statistical Analysis and Data Mining: An ASA Data Science Journal19, no. 2 (2026): e70066, https://doi.org/10.1002/sam.70066. [https://onlinelibrary.wiley.com/share/DWKBHB6HB58AKPJWIYM4?target=10.1002/sam.70066](https://onlinelibrary.wiley.com/share/DWKBHB6HB58AKPJWIYM4?target=10.1002/sam.70066)
+
+
+
 
 
 
