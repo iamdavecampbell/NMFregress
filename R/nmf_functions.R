@@ -142,7 +142,8 @@ solve_nmf <- function(input, user_anchors = NULL) {
                    vocab = input$vocab[c(anchor_rows, non_anchor_rows)],
                    topics = input$topics,
                    covariates = input$covariate,
-                   sum_theta_over_docs =  apply(theta, 2, sum))
+                   sum_theta_over_docs =  apply(theta, 2, sum),
+                   user_anchors = user_anchors)
   class(to_return) <- "nmf_output"
   cat("Complete -- outputting object of class nmf_output.\n")
   return(to_return)

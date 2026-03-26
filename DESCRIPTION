@@ -1,7 +1,7 @@
 Package: NMFregress
 Type: Package
 Title: Beta Regression Effects for Topic Trends
-Version: 1.0.0
+Version: 1.0.1
 Authors@R: c(
     person(
       "Campbell", "Dave",
