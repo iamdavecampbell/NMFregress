@@ -6,7 +6,7 @@ Now as an R package!
 
 ## Current version:
 
-Version ‘1.0’.
+Version ‘1.0.1’.
 
 ## For more:
 
