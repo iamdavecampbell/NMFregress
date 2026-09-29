@@ -14,7 +14,8 @@ get_regression_coefs(
   link.phi = "log",
   type = "ML",
   topics = NULL,
-  na_rm = TRUE
+  na_rm = TRUE,
+  max_tries = 10
 )
 }
 \arguments{
@@ -49,6 +50,10 @@ used.}
 
 \item{na_rm}{remove the problematic 'no topic' documents now so that we don't
 end up with a bootstrap sample of all NAs}
+
+\item{max_tries}{is the number of attempts to get the regression to work.
+Problems arise in beta regression when observations are too close to 0 or 1.
+The code pushes the observations away from these boundaries by a small factor}
 }
 \value{
 A matrix of regression coefficients (named if column names have been

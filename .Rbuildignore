@@ -5,3 +5,4 @@ LICENSE.md
 ^\.claude$
 ^doc$
 ^Meta$
+^README\.Rmd$

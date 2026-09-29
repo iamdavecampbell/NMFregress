@@ -83,31 +83,29 @@ solve_nmf <- function(input, user_anchors = NULL) {
   ##### prepare matrices for input to nnls (using Haddamard random projection
   # if specified)
   if (input$project == TRUE) {
+    ##### set up parameters for random projection
+    power_of_two <- 2^ceiling(log(ncol(anchor_block), base = 2))
+    num_zeros <- power_of_two - ncol(anchor_block)
+    d <- sample(c(1, -1), power_of_two, replace = TRUE)
 
-      ##### set up parameters for random projection
-      power_of_two <- 2^ceiling(log(ncol(anchor_block), base = 2))
-      num_zeros <- power_of_two - ncol(anchor_block)
-      d <- sample(c(1, -1), power_of_two, replace = TRUE)
-
-      ##### apply random projection
-      ##### details are messy, refer to thesis
-      A <- d * rbind(t(anchor_block), matrix(
-          rep(0, num_zeros * nrow(anchor_block)),
-          nrow = num_zeros))
-      A <- as.matrix(apply(A, FUN = phangorn::fhm, MARGIN = 2))
-      B <- d * rbind(t(other_block), matrix(
-        rep(0, num_zeros * nrow(other_block)), nrow = num_zeros))
-      B <- as.matrix(apply(B, FUN = phangorn::fhm, MARGIN = 2))
-      selected <- sample(c(1, 0), power_of_two,
-                  prob = c(input$proj_dim / power_of_two,
-                           1 - input$proj_dim / power_of_two),
-                  replace = TRUE)
-      selected <- which(selected == 1)
-      A <- rep(sqrt(power_of_two / input$proj_dim),
-               length(selected)) * A[selected, ]
-      B <- rep(sqrt(power_of_two / input$proj_dim),
-               length(selected)) * B[selected, ]
-
+    ##### apply random projection
+    ##### details are messy, refer to thesis
+    A <- d * rbind(t(anchor_block), matrix(
+        rep(0, num_zeros * nrow(anchor_block)),
+        nrow = num_zeros))
+    A <- as.matrix(apply(A, FUN = phangorn::fhm, MARGIN = 2))
+    B <- d * rbind(t(other_block), matrix(
+      rep(0, num_zeros * nrow(other_block)), nrow = num_zeros))
+    B <- as.matrix(apply(B, FUN = phangorn::fhm, MARGIN = 2))
+    selected <- sample(c(1, 0), power_of_two,
+                       prob = c(input$proj_dim / power_of_two,
+                       1 - input$proj_dim / power_of_two),
+                       replace = TRUE)
+    selected <- which(selected == 1)
+    A <- rep(sqrt(power_of_two / input$proj_dim),
+             length(selected)) * A[selected, ]
+    B <- rep(sqrt(power_of_two / input$proj_dim),
+             length(selected)) * B[selected, ]
   } else {
     ##### transpose matrices for input to nnls
     A <- t(anchor_block)
@@ -134,20 +132,19 @@ solve_nmf <- function(input, user_anchors = NULL) {
   theta <- theta[anchor_order, ]
   rownames(theta) <- colnames(phi)
   ##### return object of class nmf_output
-  to_return <- list(phi = phi,
-                   theta = theta,
-                   anchors = anchors[anchor_order],
-                   extract_order_anchors = extract_order_anchors,
-                   lambdas = lambdas,
-                   vocab = input$vocab[c(anchor_rows, non_anchor_rows)],
-                   topics = input$topics,
-                   covariates = input$covariate,
-                   sum_theta_over_docs =  apply(theta, 2, sum),
-                   user_anchors = user_anchors)
-  class(to_return) <- "nmf_output"
   cat("Complete -- outputting object of class nmf_output.\n")
+  to_return <- list(phi = phi,
+                    theta = theta,
+                    anchors = anchors[anchor_order],
+                    extract_order_anchors = extract_order_anchors,
+                    lambdas = lambdas,
+                    vocab = input$vocab[c(anchor_rows, non_anchor_rows)],
+                    topics = input$topics,
+                    covariates = input$covariate,
+                    sum_theta_over_docs =  apply(theta, 2, sum),
+                    user_anchors = user_anchors)
+  class(to_return) <- "nmf_output"
   return(to_return)
-
 }
 #' @title print_top_words
 #'
@@ -188,7 +185,6 @@ print_top_words <- function(output, n = 10) {
     names(word_list)[i] <- output$anchors[i]
   }
   return(word_list)
-
 }
 
 
@@ -220,11 +216,12 @@ get_lambda <- function(output) {
    lambdas <- output$phi[1:output$topics,
                        1:output$topics]
    words_and_lambda <- data.frame(anchors = output$vocab[1:output$topics],
-          lambdacrit = apply(lambdas, 1, function(x) {
-            1 / x[x != 0]
-            })
+                                  lambdacrit = apply(lambdas, 1, function(x) {
+                                    1 / x[x != 0]
+                                    })
    )
    words_and_lambda[order(words_and_lambda$lambdacrit), ]
+   return(words_and_lambda)
 }
 
 

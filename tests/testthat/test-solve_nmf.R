@@ -1,5 +1,4 @@
 test_that("Romeo and Juliet anchor extract", {
-
   r_and_j_anchor_set <- solve_nmf(
     create_input(Romeo_and_Juliet_tdm,
                  vocab = rownames(Romeo_and_Juliet_tdm),
